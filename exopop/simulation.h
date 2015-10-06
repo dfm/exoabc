@@ -6,6 +6,7 @@
 #include <vector>
 #include <boost/random.hpp>
 #include <boost/math/distributions.hpp>
+#include <boost/random/beta_distribution.hpp>
 
 using std::vector;
 using boost::math::cdf;
@@ -31,7 +32,6 @@ struct CatalogRow {
 
 class Star {
 public:
-    Star () : gamma_(4.65, 0.98) {};
     Star (
         double mass, double radius,
         double dataspan, double dutycycle,
@@ -53,6 +53,8 @@ public:
             thresh_y_[i] = thresh_y[i];
         }
     };
+
+    double get_mass () const { return mass_; };
 
     //
     // Estimate the approximate expected transit depth as a function
@@ -175,7 +177,7 @@ public:
     Simulation (unsigned nstars, unsigned nplanets,
                 double min_radius, double max_radius,
                 double min_period, double max_period,
-                unsigned seed)
+                unsigned seed, double alpha=0.867, double beta=3.03)
     : min_radius_(min_radius), max_radius_(max_radius),
       min_period_(min_period), max_period_(max_period),
       nstars_(nstars), nplanets_(nplanets), ntot_(nstars * nplanets),
@@ -186,7 +188,9 @@ public:
       eccen_randoms_(nstars*nplanets),
       omega_randoms_(nstars*nplanets),
       delta_incl_randoms_(nstars*nplanets),
-      stars_(nstars), rng_(seed) {
+      stars_(), rng_(seed),
+      beta_generator_(alpha, beta)
+    {
         resample_multis();
         resample_incls();
         resample_radii();
@@ -195,7 +199,10 @@ public:
         resample_omegas();
         resample_delta_incls();
     };
-    void add_star (Star star) {
+    ~Simulation () {
+        for (unsigned i = 0; i < nstars_; ++i) delete stars_[i];
+    };
+    void add_star (Star* star) {
         stars_.push_back(star);
     };
 
@@ -218,7 +225,7 @@ public:
     };
     void resample_eccens () {
         for (unsigned i = 0; i < ntot_; ++i)
-            eccen_randoms_[i] = uniform_generator_(rng_);
+            eccen_randoms_[i] = beta_generator_(rng_);
     };
     void resample_omegas () {
         for (unsigned i = 0; i < ntot_; ++i)
@@ -242,23 +249,32 @@ public:
 
         // Unpack the parameters.
         vector<double> multi_params(nplanets_ - 1);
-        double radius, period, incl, omega, eccen = 0.0, aor, Q, factor, r, b,
+        double radius, period, incl, omega, eccen, aor, Q, factor, r, b,
                prob, norm = 0.0,
                radius_power1 = params[0],
                radius_power2 = params[1],
                radius_break = params[2],
-               period_power = params[3],
-               incl_sigma = params[4];
+               period_power1 = params[3],
+               period_power2 = params[4],
+               period_break = params[5],
+               incl_sigma = params[6];
+
+        // Check that the break locations are in the correct ranges.
+        if (radius_break < min_radius_ || max_radius_ < radius_break ||
+                period_break < min_period_ || max_period_ < period_break) {
+            *flag = 2;
+            return catalog;
+        }
 
         // Get the multiplicity parameters and fail if they are invalid.
         for (i = 0; i < nplanets_-1; ++i) {
-            multi_params[i] = exp(params[5+i]);
+            multi_params[i] = exp(params[7+i]);
             norm += multi_params[i];
         }
         if (norm > 1.0) { *flag = 1; return catalog; }
 
         for (i = 0; i < nstars_; ++i) {
-            Star star = stars_[i];
+            Star* star = stars_[i];
             count = 0;
             prob = 0.0;
             for (j = 0; j < nplanets_; ++j) {
@@ -272,19 +288,22 @@ public:
                 radius = broken_power_law(radius_power1, radius_power2,
                                           radius_break, min_radius_,
                                           max_radius_, radius_randoms_[n]);
-                period = power_law(period_power, min_period_, max_period_,
-                                   period_randoms_[n]);
+                period = broken_power_law(period_power1, period_power2,
+                                          period_break, min_period_,
+                                          max_period_, period_randoms_[n]);
                 incl = incl_randoms_[i] + incl_sigma * delta_incl_randoms_[n];
+                eccen = eccen_randoms_[n];
                 omega = omega_randoms_[n];
 
                 // Completeness model
-                aor = star.get_aor(period);
+                aor = star->get_aor(period);
 
                 // Geometry
                 factor = (1 - eccen * eccen) / (1 + eccen * sin(omega));
                 b = std::abs(aor * cos(incl) * factor);
+                /* std::cout << star->get_mass() << " " << period << " " << aor << std::endl; */
                 if (b < 1.0) {
-                    Q = star.get_completeness(aor, period, radius, eccen);
+                    Q = star->get_completeness(aor, period, radius, eccen);
                     r = uniform_generator_(rng_);
                     if (r <= Q) {
                         CatalogRow row = {i, period, radius};
@@ -310,10 +329,11 @@ private:
                    eccen_randoms_,
                    omega_randoms_,
                    delta_incl_randoms_;
-    vector<Star> stars_;
+    vector<Star*> stars_;
     boost::random::mt19937 rng_;
     boost::random::uniform_01<> uniform_generator_;
     boost::random::normal_distribution<> normal_generator_;
+    boost::random::beta_distribution<> beta_generator_;
 
     double power_law (double n, double mn, double mx, double u) const {
         if (fabs(n + 1.0) < DBL_EPSILON) {

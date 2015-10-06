@@ -36,7 +36,7 @@ cdef extern from "simulation.h" namespace "abcsim":
             double max_radius, double min_period, double max_period,
             unsigned seed
         )
-        void add_star (Star star)
+        void add_star (Star* star)
         void resample_radii ()
         void resample_periods ()
         void resample_eccens ()
@@ -47,6 +47,12 @@ cdef extern from "simulation.h" namespace "abcsim":
 
 
 cdef class Simulator:
+    """
+    This class provides functionality for simulating a population of exoplanets
+    around a set of Kepler targets. This uses the Burke et al. (2015)
+    semi-analytic completeness model.
+
+    """
 
     cdef unsigned nplanets
     cdef Simulation* simulator
@@ -68,7 +74,7 @@ cdef class Simulator:
                                         seed)
 
         # Add the stars from the import catalog.
-        cdef Star starobj
+        cdef Star* starobj
         cdef np.ndarray[DTYPE_t, ndim=1] cdpp_x
         cdef np.ndarray[DTYPE_t, ndim=1] cdpp_y
         cdef np.ndarray[DTYPE_t, ndim=1] thr_x
@@ -92,7 +98,7 @@ cdef class Simulator:
             thr_y = np.ascontiguousarray(star[thr_cols][inds],
                                          dtype=np.float64)
 
-            starobj = Star(
+            starobj = new Star(
                 star.mass, star.radius, star.dataspan, star.dutycycle,
                 cdpp_x.shape[0], <double*>cdpp_x.data, <double*>cdpp_y.data,
                 thr_x.shape[0], <double*>thr_x.data, <double*>thr_y.data,
@@ -103,7 +109,17 @@ cdef class Simulator:
         del self.simulator
 
     def observe(self, np.ndarray[DTYPE_t, ndim=1] params):
-        if params.shape[0] != 5 + self.nplanets - 1:
+        """
+        Observe the current simulation for a given set of hyperparameters.
+        The parameters are as follows:
+
+        .. code-block:: python
+            [radius_power1, radius_power2, radius_break,
+             period_power1, period_power2, period_break,
+             std_of_incl_distribution, ln_multiplicity...(nmax parameters)]
+
+        """
+        if params.shape[0] != 7 + self.nplanets - 1:
             raise ValueError("dimension mismatch")
 
         cdef np.ndarray[DTYPE_u_t, ndim=1] counts = np.empty(self.nplanets,
