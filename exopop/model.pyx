@@ -22,6 +22,7 @@ cdef extern from "simulation.h" namespace "abcsim":
         double radius
 
     cdef cppclass Star:
+        Star ()
         Star (
             double mass, double radius,
             double dataspan, double dutycycle,
@@ -35,7 +36,7 @@ cdef extern from "simulation.h" namespace "abcsim":
             double max_radius, double min_period, double max_period,
             unsigned seed
         )
-        void add_star (Star* star)
+        void add_star (Star star)
         void resample_radii ()
         void resample_periods ()
         void resample_eccens ()
@@ -67,7 +68,7 @@ cdef class Simulator:
                                         seed)
 
         # Add the stars from the import catalog.
-        cdef Star* starobj
+        cdef Star starobj
         cdef np.ndarray[DTYPE_t, ndim=1] cdpp_x
         cdef np.ndarray[DTYPE_t, ndim=1] cdpp_y
         cdef np.ndarray[DTYPE_t, ndim=1] thr_x
@@ -91,7 +92,7 @@ cdef class Simulator:
             thr_y = np.ascontiguousarray(star[thr_cols][inds],
                                          dtype=np.float64)
 
-            starobj = new Star(
+            starobj = Star(
                 star.mass, star.radius, star.dataspan, star.dutycycle,
                 cdpp_x.shape[0], <double*>cdpp_x.data, <double*>cdpp_y.data,
                 thr_x.shape[0], <double*>thr_x.data, <double*>thr_y.data,

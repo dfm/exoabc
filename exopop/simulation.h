@@ -31,6 +31,7 @@ struct CatalogRow {
 
 class Star {
 public:
+    Star () : gamma_(4.65, 0.98) {};
     Star (
         double mass, double radius,
         double dataspan, double dutycycle,
@@ -178,7 +179,6 @@ public:
     : min_radius_(min_radius), max_radius_(max_radius),
       min_period_(min_period), max_period_(max_period),
       nstars_(nstars), nplanets_(nplanets), ntot_(nstars * nplanets),
-      star_ind_(0),
       multi_randoms_(nstars),
       incl_randoms_(nstars),
       radius_randoms_(nstars*nplanets),
@@ -195,12 +195,8 @@ public:
         resample_omegas();
         resample_delta_incls();
     };
-    ~Simulation () {
-        for (unsigned i = 0; i < nstars_; ++i) delete stars_[i];
-    };
-    void add_star (Star* star) {
-        stars_[star_ind_] = star;
-        star_ind_++;
+    void add_star (Star star) {
+        stars_.push_back(star);
     };
 
     // Re-sample the underlying parameters.
@@ -262,7 +258,7 @@ public:
         if (norm > 1.0) { *flag = 1; return catalog; }
 
         for (i = 0; i < nstars_; ++i) {
-            Star* star = stars_[i];
+            Star star = stars_[i];
             count = 0;
             prob = 0.0;
             for (j = 0; j < nplanets_; ++j) {
@@ -282,13 +278,13 @@ public:
                 omega = omega_randoms_[n];
 
                 // Completeness model
-                aor = star->get_aor(period);
+                aor = star.get_aor(period);
 
                 // Geometry
                 factor = (1 - eccen * eccen) / (1 + eccen * sin(omega));
                 b = std::abs(aor * cos(incl) * factor);
                 if (b < 1.0) {
-                    Q = star->get_completeness(aor, period, radius, eccen);
+                    Q = star.get_completeness(aor, period, radius, eccen);
                     r = uniform_generator_(rng_);
                     if (r <= Q) {
                         CatalogRow row = {i, period, radius};
@@ -306,7 +302,7 @@ public:
 
 private:
     double min_radius_, max_radius_, min_period_, max_period_;
-    unsigned nstars_, nplanets_, ntot_, star_ind_;
+    unsigned nstars_, nplanets_, ntot_;
     vector<double> multi_randoms_,
                    incl_randoms_,
                    radius_randoms_,
@@ -314,7 +310,7 @@ private:
                    eccen_randoms_,
                    omega_randoms_,
                    delta_incl_randoms_;
-    vector<Star*> stars_;
+    vector<Star> stars_;
     boost::random::mt19937 rng_;
     boost::random::uniform_01<> uniform_generator_;
     boost::random::normal_distribution<> normal_generator_;

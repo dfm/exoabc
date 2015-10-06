@@ -69,7 +69,7 @@ counts = np.array(unique_kois.groupby("koi_pdisposition")
 data[1:1+len(counts)] = counts
 print(data)
 
-sim = Simulator(stlr, NMAX, RADIUS_RNG[0], RADIUS_RNG[1],
+sim = Simulator(stlr.iloc[:100], NMAX, RADIUS_RNG[0], RADIUS_RNG[1],
                 PERIOD_RNG[0], PERIOD_RNG[1])
 
 multi = np.arange(1, NMAX+1) ** -1.0

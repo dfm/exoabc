@@ -19,8 +19,8 @@ int main () {
            cdpp_y[] = {10.0},
            thresh_x[] = {100.},
            thresh_y[] = {7.1};
-    sim.add_star(new Star (0.92, 0.839, 0.5 * M_PI, 1426.742, 0.8792,
-                           1, cdpp_x, cdpp_y, 1, thresh_x, thresh_y));
+    sim.add_star(Star (0.92, 0.839, 0.5 * M_PI, 1426.742, 0.8792,
+                       1, cdpp_x, cdpp_y, 1, thresh_x, thresh_y));
 
     double params[] = {-2.5, -0.5, 0.01};
     unsigned counts[10];
