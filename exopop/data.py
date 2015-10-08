@@ -60,6 +60,29 @@ def get_burke_gk(**kwargs):
     return pd.DataFrame(stlr[m])
 
 
+def get_ballard_m(**kwargs):
+    """
+    Get the stellar catalog of M dwarfs as selected by Ballard & Johnson
+    (2014). The output is a Pandas data frame with all the columns from the
+    ``stellar`` tables on the Exoplanet Archive.
+
+    """
+    stlr = get_catalog("q1_q16_stellar", **kwargs)
+
+    # Select M dwarfs.
+    m = (3950 <= stlr.teff) & (stlr.teff <= 4200)
+    m &= stlr.radius <= 1.15
+
+    # Only include stars with sufficient data coverage.
+    m &= stlr.dataspan > 365.25*2.
+    m &= stlr.dutycycle > 0.6
+    m &= stlr.rrmscdpp07p5 <= 1000.
+
+    # Only select stars with mass & radius estimates.
+    m &= np.isfinite(stlr.mass) & np.isfinite(stlr.radius)
+    return pd.DataFrame(stlr[m])
+
+
 def get_candidates(stlr=None, period_range=None, radius_range=None, **kwargs):
     """
     Get the Q1-Q16 candidates from the KOI table on the Exoplanet Archive.
@@ -69,7 +92,7 @@ def get_candidates(stlr=None, period_range=None, radius_range=None, **kwargs):
     :param radius_range: restrict to a range of radii
 
     """
-    kois = get_catalog("q1_q16_koi", **kwargs)
+    kois = get_catalog("cumulative", **kwargs)
 
     # Join on the stellar list.
     if stlr is not None:

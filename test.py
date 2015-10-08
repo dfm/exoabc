@@ -35,7 +35,7 @@ multi = np.ones(NMAX)  # np.arange(1, NMAX+1) ** -1.0
 multi /= np.sum(multi)
 pars = np.append([
     -0.5, -2.0, 3.0,    # radius
-    -0.5, 0.1, 100.0,  # period
+    -0.5, 0.1, 100.0,   # period
     0.01                # inclination
 ], np.log(multi[:-1]))
 

@@ -37,12 +37,14 @@ cdef extern from "simulation.h" namespace "abcsim":
             unsigned seed
         )
         void add_star (Star* star)
+        void resample_multis ()
+        void resample_incls ()
         void resample_radii ()
         void resample_periods ()
         void resample_eccens ()
-        void resample_incls ()
-        void resample_delta_incls ()
         void resample_omegas ()
+        void resample_delta_incls ()
+        void resample_obs_randoms ()
         vector[CatalogRow] observe (double* params, unsigned* counts, int* flag)
 
 
@@ -55,6 +57,8 @@ cdef class Simulator:
     """
 
     cdef unsigned nplanets
+    cdef object period_range
+    cdef object radius_range
     cdef Simulation* simulator
 
     def __cinit__(self, stars, unsigned nplanets,
@@ -68,6 +72,8 @@ cdef class Simulator:
         # Build the simulation.
         self.nplanets = nplanets
         cdef unsigned nstars = len(stars)
+        self.radius_range = (min_radius, max_radius)
+        self.period_range = (min_period, max_period)
         self.simulator = new Simulation(nstars, nplanets,
                                         min_radius, max_radius,
                                         min_period, max_period,
@@ -108,6 +114,14 @@ cdef class Simulator:
     def __dealloc__(self):
         del self.simulator
 
+    property period_range:
+        def __get__(self):
+            return self.period_range
+
+    property radius_range:
+        def __get__(self):
+            return self.radius_range
+
     def observe(self, np.ndarray[DTYPE_t, ndim=1] params):
         """
         Observe the current simulation for a given set of hyperparameters.
@@ -135,10 +149,23 @@ cdef class Simulator:
 
         # Copy the catalog.
         cdef int i
+        cdef np.ndarray[DTYPE_u_t, ndim=1] starids = np.empty(catalog.size(),
+                                                              dtype=DTYPE_u)
         cdef np.ndarray[DTYPE_t, ndim=2] cat_out = np.empty((catalog.size(), 2),
                                                             dtype=DTYPE)
         for i in range(cat_out.shape[0]):
+            starids[i] = catalog[i].starid
             cat_out[i, 0] = catalog[i].period
             cat_out[i, 1] = catalog[i].radius
 
-        return counts, cat_out
+        return counts, starids, cat_out
+
+    def resample(self):
+        self.simulator.resample_multis()
+        self.simulator.resample_incls()
+        self.simulator.resample_radii()
+        self.simulator.resample_periods()
+        self.simulator.resample_eccens()
+        self.simulator.resample_omegas()
+        self.simulator.resample_delta_incls()
+        self.simulator.resample_obs_randoms()

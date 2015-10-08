@@ -188,6 +188,7 @@ public:
       eccen_randoms_(nstars*nplanets),
       omega_randoms_(nstars*nplanets),
       delta_incl_randoms_(nstars*nplanets),
+      obs_randoms_(nstars*nplanets),
       stars_(), rng_(seed),
       beta_generator_(alpha, beta)
     {
@@ -198,6 +199,7 @@ public:
         resample_eccens();
         resample_omegas();
         resample_delta_incls();
+        resample_obs_randoms();
     };
     ~Simulation () {
         for (unsigned i = 0; i < nstars_; ++i) delete stars_[i];
@@ -234,6 +236,10 @@ public:
     void resample_delta_incls () {
         for (unsigned i = 0; i < ntot_; ++i)
             delta_incl_randoms_[i] = normal_generator_(rng_);
+    };
+    void resample_obs_randoms () {
+        for (unsigned i = 0; i < ntot_; ++i)
+            obs_randoms_[i] = uniform_generator_(rng_);
     };
 
     // Observe
@@ -301,15 +307,13 @@ public:
                 // Geometry
                 factor = (1 - eccen * eccen) / (1 + eccen * sin(omega));
                 b = std::abs(aor * cos(incl) * factor);
-                /* std::cout << star->get_mass() << " " << period << " " << aor << std::endl; */
                 if (b < 1.0) {
                     Q = star->get_completeness(aor, period, radius, eccen);
-                    r = uniform_generator_(rng_);
+                    r = obs_randoms_[n];
                     if (r <= Q) {
                         CatalogRow row = {i, period, radius};
                         catalog.push_back(row);
                         count += 1;
-
                     }
                 }
             }
@@ -328,7 +332,8 @@ private:
                    period_randoms_,
                    eccen_randoms_,
                    omega_randoms_,
-                   delta_incl_randoms_;
+                   delta_incl_randoms_,
+                   obs_randoms_;
     vector<Star*> stars_;
     boost::random::mt19937 rng_;
     boost::random::uniform_01<> uniform_generator_;
