@@ -100,6 +100,8 @@ if __name__ == "__main__":
 
     # Set up the extension.
     ext = Extension("exopop.model", sources=src,
+                    extra_compile_args=["-Wno-unused-function",
+                                        "-Wno-#warnings"],
                     libraries=libraries, include_dirs=include_dirs)
 
     # Hackishly inject a constant into builtins to enable importing of the

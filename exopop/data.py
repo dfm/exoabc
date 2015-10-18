@@ -1,13 +1,15 @@
 # -*- coding: utf-8 -*-
 
 __all__ = ["get_catalog", "get_burke_gk", "get_candidates",
-           "compute_multiplicity"]
+           "compute_multiplicity", "calibrate_completeness"]
 
 import os
 import requests
 import numpy as np
 import pandas as pd
 from io import BytesIO  # Python 3 only!
+import matplotlib.pyplot as pl
+from scipy.optimize import leastsq
 
 
 def get_catalog(name, basepath="data"):
@@ -44,7 +46,7 @@ def get_burke_gk(**kwargs):
     tables on the Exoplanet Archive.
 
     """
-    stlr = get_catalog("q1_q16_stellar", **kwargs)
+    stlr = get_catalog("q1_q17_dr24_stellar", **kwargs)
 
     # Select G & K dwarfs.
     m = (4200 <= stlr.teff) & (stlr.teff <= 6100)
@@ -52,8 +54,7 @@ def get_burke_gk(**kwargs):
 
     # Only include stars with sufficient data coverage.
     m &= stlr.dataspan > 365.25*2.
-    m &= stlr.dutycycle > 0.6
-    m &= stlr.rrmscdpp07p5 <= 1000.
+    m &= stlr.dutycycle > 0.3
 
     # Only select stars with mass & radius estimates.
     m &= np.isfinite(stlr.mass) & np.isfinite(stlr.radius)
@@ -67,7 +68,7 @@ def get_ballard_m(**kwargs):
     ``stellar`` tables on the Exoplanet Archive.
 
     """
-    stlr = get_catalog("q1_q16_stellar", **kwargs)
+    stlr = get_catalog("q1_q17_dr24_stellar", **kwargs)
 
     # Select M dwarfs.
     m = (3950 <= stlr.teff) & (stlr.teff <= 4200)
@@ -75,24 +76,25 @@ def get_ballard_m(**kwargs):
 
     # Only include stars with sufficient data coverage.
     m &= stlr.dataspan > 365.25*2.
-    m &= stlr.dutycycle > 0.6
-    m &= stlr.rrmscdpp07p5 <= 1000.
+    m &= stlr.dutycycle > 0.3
 
     # Only select stars with mass & radius estimates.
     m &= np.isfinite(stlr.mass) & np.isfinite(stlr.radius)
     return pd.DataFrame(stlr[m])
 
 
-def get_candidates(stlr=None, period_range=None, radius_range=None, **kwargs):
+def get_candidates(stlr=None, mesthresh=15.0, period_range=None,
+                   radius_range=None, **kwargs):
     """
-    Get the Q1-Q16 candidates from the KOI table on the Exoplanet Archive.
+    Get the Q1-Q17 candidates from the KOI table on the Exoplanet Archive.
 
     :param stlr:         optionally join on a specific stellar sample
+    :param mesthresh:    the target MES threshold
     :param period_range: restrict to a range of periods
     :param radius_range: restrict to a range of radii
 
     """
-    kois = get_catalog("cumulative", **kwargs)
+    kois = get_catalog("q1_q17_dr24_koi", **kwargs)
 
     # Join on the stellar list.
     if stlr is not None:
@@ -107,6 +109,9 @@ def get_candidates(stlr=None, period_range=None, radius_range=None, **kwargs):
     if radius_range is not None:
         m &= radius_range[0] < kois.koi_prad
         m &= kois.koi_prad < radius_range[1]
+
+    # Apply the MES thresholding.
+    m &= np.isfinite(kois.koi_max_mult_ev) & (kois.koi_max_mult_ev > 15.0)
 
     return pd.DataFrame(kois[m])
 
@@ -141,3 +146,66 @@ def compute_multiplicity(nstars, kois, nmax=None):
     n = min(len(data), len(counts) - 1)
     data[1:1+n] = counts[:n]
     return data
+
+
+def calibrate_completeness(stlr, mesthresh=15.0, period_range=None,
+                           plot=False):
+    """
+    Calibrate the completeness model using injections and given a stellar
+    catalog.
+
+    :param stlr:      optionally join on a specific stellar sample
+    :param mesthresh: the target MES threshold
+
+    """
+    # Load the injection catalog.
+    names = [
+        "kepid", "sky", "period", "epoch", "t_depth", "t_dur", "t_b", "t_ror",
+        "t_aor", "offset_from_source", "offset_distance", "expect_mes",
+        "recovered", "meas_mes", "r_period", "r_epoch", "r_depth", "r_dur",
+        "r_b", "r_ror", "r_aor"
+    ]
+    inj = pd.read_csv(os.path.join("data", "q1_q17_dr24_injections.txt"),
+                      delim_whitespace=True, skiprows=4, header=None,
+                      names=names, na_values="null")
+    m = inj.offset_from_source == 0
+    if period_range is not None:
+        m &= period_range[0] < inj.period
+        m &= inj.period < period_range[1]
+    inj = pd.DataFrame(inj[m])
+
+    # Restrict to the stellar sample.
+    inj = pd.merge(inj, stlr[["kepid"]], on="kepid", how="inner")
+
+    x = np.array(inj.expect_mes, dtype=float)
+    y = np.array(inj.recovered, dtype=float)
+    y[np.array(inj.meas_mes < mesthresh)] = 0.0
+
+    p0 = np.array([0.0, 1.0, 15.0, np.log(0.5)])
+    resid = lambda p: y - completeness_model(p, x)
+    params, _, info, msg, flag = leastsq(resid, p0, full_output=True)
+    if flag not in [1, 2, 3, 4]:
+        print("Warning: completeness calibration did not converge. Message:")
+        print(msg)
+
+    if not plot:
+        return params
+
+    fig = pl.figure()
+    ax = fig.add_subplot(111)
+    b = np.linspace(0, 3*mesthresh, 30)
+    n_tot, _ = np.histogram(x, b)
+    n_rec, _ = np.histogram(x[y > 0], b)
+    n = n_rec / n_tot
+    ax.errorbar(0.5*(b[:-1] + b[1:]), n, yerr=n / np.sqrt(n_rec), fmt=".k")
+    x2 = np.linspace(0, 3*mesthresh, 1000)
+    ax.plot(x2, completeness_model(params, x2), "g")
+    ax.set_xlim(0, 3*mesthresh)
+    ax.set_xlabel("expected MES")
+    ax.set_ylabel("completeness")
+    return params, fig
+
+
+def completeness_model(pars, x):
+    y = np.polyval(pars[:2], x) / (1 + np.exp(-(x - pars[2])/np.exp(pars[3])))
+    return y * (0.0 < y) * (y <= 1.0) + 1.0 * (y > 1.0)

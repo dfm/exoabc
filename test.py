@@ -1,21 +1,20 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import os
 import time
-import requests
 import numpy as np
-import pandas as pd
-from io import BytesIO
 
 from exopop import Simulator, data
 
 NMAX = 10
-PERIOD_RNG = (5., 300.)
+PERIOD_RNG = (1., 300.)
 RADIUS_RNG = (0.3, 12.)
 
 # Get the datasets.
-stlr = data.get_burke_gk()
+stlr = data.get_ballard_m()
+# stlr = data.get_burke_gk()
+m, b = data.calibrate_completeness(stlr, bins=4)
+print("Completeness model: {0}, {1}".format(m, b))
 kois = data.get_candidates(stlr, period_range=PERIOD_RNG,
                            radius_range=RADIUS_RNG)
 multiplicity = data.compute_multiplicity(len(stlr), kois, NMAX)
@@ -26,8 +25,8 @@ print("Observed multiplicity distribution: {0}".format(multiplicity))
 
 print("Setting up simulator...")
 strt = time.time()
-sim = Simulator(stlr.iloc[:500], NMAX, RADIUS_RNG[0], RADIUS_RNG[1],
-                PERIOD_RNG[0], PERIOD_RNG[1])
+sim = Simulator(stlr.iloc[:10000], NMAX, RADIUS_RNG[0], RADIUS_RNG[1],
+                PERIOD_RNG[0], PERIOD_RNG[1], m=m, b=b)
 print("    took {0} seconds".format(time.time() - strt))
 
 # Choose some reasonable parameters.

@@ -2,6 +2,7 @@
 from __future__ import division
 
 cimport cython
+from libc.math cimport exp
 from libcpp.vector cimport vector
 
 import time
@@ -21,31 +22,52 @@ cdef extern from "simulation.h" namespace "abcsim":
         double period
         double radius
 
-    cdef cppclass Star:
-        Star ()
-        Star (
-            double mass, double radius,
-            double dataspan, double dutycycle,
-            unsigned n_cdpp, const double* cdpp_x, const double* cdpp_y,
-            unsigned n_thresh, const double* thresh_x, const double* thresh_y
-        )
-
     cdef cppclass Simulation:
         Simulation (
             unsigned nstars, unsigned nplanets, double min_radius,
             double max_radius, double min_period, double max_period,
             unsigned seed
         )
+        void clean_up ()
+        Simulation* copy()
         void add_star (Star* star)
-        void resample_multis ()
-        void resample_incls ()
-        void resample_radii ()
-        void resample_periods ()
-        void resample_eccens ()
-        void resample_omegas ()
-        void resample_delta_incls ()
-        void resample_obs_randoms ()
         vector[CatalogRow] observe (double* params, unsigned* counts, int* flag)
+
+        # Re-sampling methods can perturb individual sets of parameters or all
+        # of them.
+        void resample ()
+        void resample_multis()
+        void resample_q1()
+        void resample_q2()
+        void resample_incls()
+        void resample_radii()
+        void resample_periods()
+        void resample_eccens()
+        void resample_omegas()
+        void resample_mutual_incls()
+        void resample_delta_incls()
+        void resample_obs_randoms()
+
+cdef extern from "completeness.h" namespace "abcsim":
+
+    cdef cppclass CompletenessModel:
+        CompletenessModel ()
+
+    cdef cppclass Q1_Q16_CompletenessModel(CompletenessModel):
+        Q1_Q16_CompletenessModel (double a, double b)
+
+    cdef cppclass Q1_Q17_CompletenessModel(CompletenessModel):
+        Q1_Q17_CompletenessModel (double m, double b, double mesthresh, double width)
+
+    cdef cppclass Star:
+        Star ()
+        Star (
+            CompletenessModel* completeness_model,
+            double mass, double radius,
+            double dataspan, double dutycycle,
+            unsigned n_cdpp, const double* cdpp_x, const double* cdpp_y,
+            unsigned n_thresh, const double* thresh_x, const double* thresh_y
+        )
 
 
 cdef class Simulator:
@@ -57,19 +79,37 @@ cdef class Simulator:
     """
 
     cdef unsigned nplanets
+    cdef unsigned cached
     cdef object period_range
     cdef object radius_range
     cdef Simulation* simulator
+    cdef Simulation* cached_simulator
+    cdef CompletenessModel* completeness_model
 
     def __cinit__(self, stars, unsigned nplanets,
                   double min_radius, double max_radius,
                   double min_period, double max_period,
-                  seed=None):
+                  np.ndarray[DTYPE_t, ndim=1] completeness_params,
+                  seed=None, int release=17):
+        # Parse the completeness model.
+        if release == 16:
+            self.completeness_model = new Q1_Q16_CompletenessModel(
+                completeness_params[0], completeness_params[1],
+            )
+        elif release == 17:
+            self.completeness_model = new Q1_Q17_CompletenessModel(
+                completeness_params[0], completeness_params[1],
+                completeness_params[2], exp(completeness_params[3]),
+            )
+        else:
+            raise ValueError("invalid 'release'")
+
         # Seed with the time if no seed is provided.
         if seed is None:
             seed = time.time()
 
         # Build the simulation.
+        self.cached = 0
         self.nplanets = nplanets
         cdef unsigned nstars = len(stars)
         self.radius_range = (min_radius, max_radius)
@@ -105,6 +145,7 @@ cdef class Simulator:
                                          dtype=np.float64)
 
             starobj = new Star(
+                self.completeness_model,
                 star.mass, star.radius, star.dataspan, star.dutycycle,
                 cdpp_x.shape[0], <double*>cdpp_x.data, <double*>cdpp_y.data,
                 thr_x.shape[0], <double*>thr_x.data, <double*>thr_y.data,
@@ -112,7 +153,15 @@ cdef class Simulator:
             self.simulator.add_star(starobj)
 
     def __dealloc__(self):
+        if self.cached:
+            del self.cached_simulator
+        self.simulator.clean_up()
         del self.simulator
+        del self.completeness_model
+
+    property nplanets:
+        def __get__(self):
+            return self.nplanets
 
     property period_range:
         def __get__(self):
@@ -161,11 +210,51 @@ cdef class Simulator:
         return counts, starids, cat_out
 
     def resample(self):
-        self.simulator.resample_multis()
-        self.simulator.resample_incls()
-        self.simulator.resample_radii()
-        self.simulator.resample_periods()
-        self.simulator.resample_eccens()
-        self.simulator.resample_omegas()
-        self.simulator.resample_delta_incls()
-        self.simulator.resample_obs_randoms()
+        """
+        Re-sample all the per-planet and per-star parameters from their priors.
+
+        """
+        self.simulator.resample()
+
+    def revert(self):
+        if self.cached:
+            del self.simulator
+            self.simulator = self.cached_simulator
+            self.cached = 0
+
+    def perturb(self):
+        """
+        Randomly re-sample one set of per-planet or per-star parameters (i.e.
+        all the periods or radii or whatever) from the prior.
+
+        """
+        # First, cache the current simulation state for reverting.
+        if self.cached:
+            del self.cached_simulator
+        self.cached_simulator = self.simulator.copy()
+        self.cached = 1
+
+        # Then select a parameter to update.
+        cdef int ind = np.random.randint(11)
+        if ind == 0:
+            self.simulator.resample_multis()
+        elif ind == 1:
+            self.simulator.resample_q1()
+        elif ind == 2:
+            self.simulator.resample_q2()
+        elif ind == 3:
+            self.simulator.resample_incls()
+        elif ind == 4:
+            self.simulator.resample_radii()
+        elif ind == 5:
+            self.simulator.resample_periods()
+        elif ind == 6:
+            self.simulator.resample_eccens()
+        elif ind == 7:
+            self.simulator.resample_omegas()
+        elif ind == 8:
+            self.simulator.resample_mutual_incls()
+        elif ind == 9:
+            self.simulator.resample_delta_incls()
+        elif ind == 10:
+            self.simulator.resample_obs_randoms()
