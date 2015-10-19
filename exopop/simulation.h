@@ -4,6 +4,8 @@
 #include <cmath>
 #include <cfloat>
 #include <vector>
+#include <string>
+#include <sstream>
 #include <boost/random.hpp>
 #include <boost/math/distributions.hpp>
 #include <boost/random/beta_distribution.hpp>
@@ -11,6 +13,7 @@
 #include "completeness.h"
 
 using std::vector;
+using std::string;
 using boost::math::cdf;
 
 using abcsim::Star;
@@ -43,7 +46,7 @@ public:
       mutual_incl_randoms_(nstars),
       delta_incl_randoms_(nstars*nplanets),
       obs_randoms_(nstars*nplanets),
-      stars_(), rng_(seed), cached_rng_(seed),
+      stars_(), rng_(seed),
       beta_generator_(alpha, beta)
     {
         resample();
@@ -57,6 +60,27 @@ public:
     };
     Simulation* copy () {
         return new Simulation(*this);
+    };
+
+    string get_state () const {
+        std::stringstream ss;
+        ss << rng_;
+        return ss.str();
+    };
+
+    string get_state (unsigned seed) const {
+        std::stringstream ss;
+        boost::random::mt19937 gen(seed);
+        ss << gen;
+        return ss.str();
+    };
+
+    void set_state (string state) {
+        std::stringstream ss(state);
+        ss >> rng_;
+        uniform_generator_.reset();
+        normal_generator_.reset();
+        beta_generator_.reset();
     };
 
     // Re-sample the underlying parameters.
@@ -214,7 +238,7 @@ private:
                    delta_incl_randoms_,
                    obs_randoms_;
     vector<Star*> stars_;
-    boost::random::mt19937 rng_, cached_rng_;
+    boost::random::mt19937 rng_;
     boost::random::uniform_01<> uniform_generator_;
     boost::random::normal_distribution<> normal_generator_;
     boost::random::beta_distribution<> beta_generator_;

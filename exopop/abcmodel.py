@@ -9,6 +9,7 @@ __all__ = [
 
 import numpy as np
 import matplotlib.pyplot as pl
+from scipy.stats import ks_2samp
 from scipy.special import factorial
 
 from .data import compute_multiplicity
@@ -26,36 +27,34 @@ class RealDataset(object):
 
 class SimulatedDataset(object):
 
-    def __init__(self, multiplicity, periods, radii):
+    def __init__(self, multiplicity, periods, radii, true_theta, true_state):
         self.multiplicity = multiplicity
         self.periods = periods
         self.radii = radii
+        self.true_theta = true_theta
+        self.true_state = true_state
 
 
 class ExopopABCModel(object):
 
-    def __init__(self, simulator, dataset, initial_theta, multi_dist=None,
+    def __init__(self, simulator, dataset, multi_dist=None,
                  thawed_parameters=None):
         self.simulator = simulator
-        self.theta = initial_theta
-        self.cached_theta = np.array(self.theta)
         self.dataset = dataset
 
         if multi_dist is None:
             multi_dist = PowerLawMultiDist()
         self.multi_dist = multi_dist
 
-        if thawed_parameters is None:
-            thawed_parameters = np.arange(len(self.theta))
-        self.thawed_parameters = np.array(thawed_parameters, dtype=int)
-
         if self.simulator.nplanets != len(self.dataset.multiplicity):
             raise ValueError("dimension mismatch: the dataset and simulator "
                              "must expect the same number of planets")
 
-    def get_simulated_dataset(self):
-        r = self.simulator.observe(self.transform_parameters(self.theta))
-        return SimulatedDataset(r[0], r[2][:, 0], r[2][:, 1])
+    def get_simulated_dataset(self, theta, state=None):
+        r = self.simulator.observe(self.transform_parameters(theta),
+                                   state=state)
+        return SimulatedDataset(r[0], r[2][:, 0], r[2][:, 1],
+                                np.array(theta), state)
 
     def transform_parameters(self, theta):
         n = len(self.multi_dist)
@@ -66,143 +65,197 @@ class ExopopABCModel(object):
             np.log(multi[:-1])
         ))
 
-    def log_prior(self):
+    def log_prior(self, theta):
         n = len(self.multi_dist)
-        lp = self.multi_dist.log_prior(self.theta[:n])
+        lp = self.multi_dist.log_prior(theta[:n])
         if not np.isfinite(lp):
             return -np.inf
 
         # Radius slopes
-        if np.any((self.theta[n:n+2] < -5) | (self.theta[n:n+2] > 5)):
+        if np.any((theta[n:n+2] < -5) | (theta[n:n+2] > 5)):
             return -np.inf
 
         # Radius break
         rng = self.simulator.radius_range
-        if not (rng[0] < self.theta[n+2] < rng[1]):
+        if not (rng[0] < theta[n+2] < rng[1]):
             return -np.inf
 
         # Period slopes
-        if np.any((self.theta[n+3:n+5] < -5) | (self.theta[n+3:n+5] > 5)):
+        if np.any((theta[n+3:n+5] < -5) | (theta[n+3:n+5] > 5)):
             return -np.inf
 
         # Period break
         rng = self.simulator.period_range
-        if not (rng[0] < self.theta[n+5] < rng[1]):
+        if not (rng[0] < theta[n+5] < rng[1]):
             return -np.inf
 
         # Mutual inclination width
-        if not (-3 < self.theta[-1] < np.log(90.0)):
+        if not (-3 < theta[-1] < np.log(90.0)):
             return -np.inf
 
         return lp
 
-    def negative_log_distance(self):
+    def negative_log_distance(self, theta, state=None):
         # Run the simulation and observe the synthetic catalog.
         try:
-            r = self.simulator.observe(self.transform_parameters(self.theta))
+            r = self.simulator.observe(self.transform_parameters(theta),
+                                       state=state)
         except RuntimeError:
             return -np.inf
         counts = r[0]
-
-        # Assert that the model predicts at least one count in every
-        # multiplicity bin with a non-zero observation.
-        multi = self.dataset.multiplicity
-        if np.any((multi > 0) & (counts == 0)):
+        catalog = r[2]
+        if not len(catalog):
             return -np.inf
 
         # Compute the Poisson likelihood with the simulation providing the
         # expected counts.
-        m = counts > 0
+        multi = self.dataset.multiplicity
+        m = (counts > 0) & (multi > 0)
         nld = multi[m] * np.log(counts[m]) - counts[m]
-        nld[multi > 1] -= logfactorial(multi[m & (multi > 1)])
-        return np.sum(nld)
+        nld -= logfactorial(multi[m])
+        nld = np.sum(nld)
 
-    def perturb(self, nld_thresh=-np.inf, initial_nld=None):
-        self.cached_theta = np.array(self.theta)
+        # Penalize any bins where the observed count is zero but the expected
+        # count is non-zero.
+        # nld -= np.sum((multi == 0) & (counts > 0))
+        nld -= np.sum(counts[multi == 0])
 
+        # Compare the period and radius distributions.
+        nld += np.log(ks_2samp(catalog[:, 0], self.dataset.periods).pvalue)
+        nld += np.log(ks_2samp(catalog[:, 1], self.dataset.radii).pvalue)
+
+        return nld
+
+    def perturb(self, initial_theta, initial_state, initial_nld,
+                nld_thresh=-np.inf):
         # Sometime update the simulation variables.
-        if np.random.rand() < 0.5:
-            self.simulator.perturb()
-            nld = self.negative_log_distance()
+        if np.random.rand() < 0.8:
+            new_state = self.simulator.get_state()
+            nld = self.negative_log_distance(initial_theta, state=new_state)
             if nld > nld_thresh:
-                return nld
-            self.simulator.revert()
-            return (
-                self.negative_log_distance()
-                if initial_nld is None else initial_nld
-            )
+                return initial_theta, new_state, nld
+            return initial_theta, initial_state, initial_nld
 
         # Other times, update the hyperparameters.
-        lny = self.log_prior() + np.log(np.random.rand())
-        i = np.random.choice(self.thawed_parameters)
-        I = self.step_out(i, lny, nld_thresh, 3.0)
-        return self.slice_sample(i, lny, nld_thresh, I)
+        lny = self.log_prior(initial_theta) + np.log(np.random.rand())
+        i = np.random.randint(len(initial_theta))
+        # i = np.random.choice(self.thawed_parameters)
+        I = self.step_out(initial_theta, initial_state, i, lny, nld_thresh,
+                          3.0)
+        return self.slice_sample(initial_theta, initial_state, i, lny,
+                                 nld_thresh, I)
 
-    def revert(self):
-        self.theta = np.array(self.cached_theta)
-        self.simulator.revert()
-
-    def step_out(self, ind, lny, nld_thresh, w, m=100):
+    def step_out(self, theta, state, ind, lny, nld_thresh, w, m=100):
+        x0 = theta[ind]
         u, v = np.random.rand(2)
-        x0 = np.array(self.theta[ind])
-        L = self.theta[ind] - w*u
+        L = x0 - w*u
         R = L + w
         J = int(np.floor(v*m))
         K = int(m - 1 - J)
 
         for j in range(J, 0, -1):
             L -= w
-            self.theta[ind] = L
-            nld = self.negative_log_distance()
-            if lny > self.log_prior() or nld_thresh > nld:
+            theta[ind] = L
+            nld = self.negative_log_distance(theta, state=state)
+            if lny > self.log_prior(theta) or nld_thresh > nld:
                 break
 
         for k in range(K, 0, -1):
             R += w
-            self.theta[ind] = R
-            nld = self.negative_log_distance()
-            if lny > self.log_prior() or nld_thresh > nld:
+            theta[ind] = R
+            nld = self.negative_log_distance(theta, state=state)
+            if lny > self.log_prior(theta) or nld_thresh > nld:
                 break
 
-        self.theta[ind] = x0
+        theta[ind] = x0
 
         return L, R
 
-    def slice_sample(self, ind, lny, nld_thresh, I):
+    def slice_sample(self, theta, state, ind, lny, nld_thresh, I):
+        x0 = theta[ind]
         L, R = I
-        x0 = self.theta[ind]
         while True:
             u = np.random.rand()
-            self.theta[ind] = L + u * (R - L)
-            nld = self.negative_log_distance()
-            if lny < self.log_prior() and nld_thresh < nld:
-                return nld
-            if self.theta[ind] < x0:
-                L = self.theta[ind]
+            theta[ind] = L + u * (R - L)
+            nld = self.negative_log_distance(theta, state=state)
+            if lny < self.log_prior(theta) and nld_thresh < nld:
+                return theta, state, nld
+            if theta[ind] < x0:
+                L = theta[ind]
             else:
-                R = self.theta[ind]
+                R = theta[ind]
             if np.allclose(L, R):
                 raise RuntimeError("slice sampling didn't converge")
 
-    def sample(self, theta, niter, nld_thresh=-np.inf):
-        self.theta = np.array(theta)
-        chain = np.empty((niter, len(self.theta)))
-        nlds = np.empty(niter)
+    def sample(self, niter, initial_thetas, initial_states=None,
+               nld_thresh=-np.inf, maxinit=1000):
+        nwalkers, ndim = initial_thetas.shape
 
-        # Save the initial location.
-        chain[0, :] = theta
-        nlds[0] = self.negative_log_distance()
+        # Allocate memory for the chain.
+        thetas = np.empty((niter, nwalkers, ndim))
+        states = [[None for _ in range(nwalkers)] for _ in range(niter)]
+        nlds = np.empty((niter, nwalkers))
 
-        for i in range(1, niter):
-            nlds[i] = self.perturb(initial_nld=nlds[i-1],
-                                   nld_thresh=nld_thresh)
-            chain[i, :] = self.theta
+        # Save the initial locations and generate some initial states if there
+        # weren't any provided.
+        thetas[0, :] = initial_thetas
+        if initial_states is None:
+            seeds = np.random.randint(10000) + np.arange(nwalkers)
+            states[0] = [self.simulator.get_state(seed) for seed in seeds]
+        else:
+            states[0] = initial_states
 
-        return chain, nlds
+        nlds[0, :] = -np.inf
+        for i in range(nwalkers):
+            nlds[0, i] = self.negative_log_distance(thetas[0, i],
+                                                    state=states[0][i])
+            for j in range(maxinit):
+                if np.isfinite(nlds[0, i]):
+                    break
+                seed = np.random.randint(10000)
+                states[0][i] = self.simulator.get_state(seed)
+                nlds[0, i] = self.negative_log_distance(thetas[0, i],
+                                                        state=states[0][i])
+            if j == maxinit:
+                assert RuntimeError("too many samples were required to "
+                                    "initialize")
 
-    def plot(self, period_range=None, radius_range=None, nsamps=1):
-        theta = self.theta
+        level = -np.inf
+        for n in range(1, niter):
+            for i in range(nwalkers):
+                theta, state, nld = self.perturb(
+                    thetas[n-1, i], states[n-1][i], nlds[n-1, i], level
+                )
+                thetas[n, i] = theta
+                states[n][i] = state
+                nlds[n, i] = nld
 
+        return thetas, states, nlds
+
+        # level = np.percentile(nlds[0], 25)
+
+        assert 0
+
+        # c = 0
+        # while np.any(m) and c < 50:
+        #     for i in np.arange(nwalkers)[m]:
+        #         states[0][i] = self.simulator.get_state(np.random.randint(10000))
+        #         nlds[0, i] = self.negative_log_distance(thetas[0, i],
+        #                                                 state=states[0][i])
+        #     m = ~np.isfinite(nlds[0, :])
+        #     print(m.sum())
+        #     print(nlds[0])
+        #     c += 1
+
+        # for i in range(1, niter):
+        #     nlds[i] = self.perturb(initial_nld=nlds[i-1],
+        #                            nld_thresh=nld_thresh)
+        #     chain[i, :] = theta
+
+        # return chain, nlds
+
+    def plot(self, theta, state=None, period_range=None, radius_range=None,
+             nsamps=1):
         if period_range is None:
             period_range = self.simulator.period_range
         if radius_range is None:
@@ -215,7 +268,7 @@ class ExopopABCModel(object):
         for _ in range(nsamps):
             if nsamps > 1:
                 self.simulator.resample()
-            r = self.simulator.observe(pars)
+            r = self.simulator.observe(pars, state=state)
             counts.append(r[0])
             catalogs.append(r[2])
 
@@ -274,7 +327,7 @@ class ExopopABCModel(object):
 
         # Plot the inclination distribution.
         ax = axes[0, 1]
-        sig = np.exp(self.theta[-1])
+        sig = np.exp(theta[-1])
         x = np.linspace(0, 4*sig, 500)
         y = x * np.exp(-0.5 * x**2 / sig**2) / sig**2
         ax.plot(x, y, "g")

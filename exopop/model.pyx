@@ -4,6 +4,7 @@ from __future__ import division
 cimport cython
 from libc.math cimport exp
 from libcpp.vector cimport vector
+from libcpp.string cimport string
 
 import time
 import numpy as np
@@ -30,6 +31,10 @@ cdef extern from "simulation.h" namespace "abcsim":
         )
         void clean_up ()
         Simulation* copy()
+        string get_state ()
+        string get_state (unsigned seed)
+        void set_state (string state)
+
         void add_star (Star* star)
         vector[CatalogRow] observe (double* params, unsigned* counts, int* flag)
 
@@ -171,7 +176,7 @@ cdef class Simulator:
         def __get__(self):
             return self.radius_range
 
-    def observe(self, np.ndarray[DTYPE_t, ndim=1] params):
+    def observe(self, np.ndarray[DTYPE_t, ndim=1] params, state=None):
         """
         Observe the current simulation for a given set of hyperparameters.
         The parameters are as follows:
@@ -181,12 +186,21 @@ cdef class Simulator:
              period_power1, period_power2, period_break,
              std_of_incl_distribution, ln_multiplicity...(nmax parameters)]
 
+        :param state: (optional)
+            The random state can be provided to ensure a specific catalog.
+
         """
         if params.shape[0] != 7 + self.nplanets - 1:
             raise ValueError("dimension mismatch")
 
         cdef np.ndarray[DTYPE_u_t, ndim=1] counts = np.empty(self.nplanets,
                                                              dtype=DTYPE_u)
+
+        if state is not None:
+            self.simulator.set_state(state)
+        else:
+            state = self.simulator.get_state()
+        self.simulator.resample()
 
         cdef int flag
         cdef vector[CatalogRow] catalog = \
@@ -207,7 +221,7 @@ cdef class Simulator:
             cat_out[i, 0] = catalog[i].period
             cat_out[i, 1] = catalog[i].radius
 
-        return counts, starids, cat_out
+        return counts, starids, cat_out, state
 
     def resample(self):
         """
@@ -258,3 +272,11 @@ cdef class Simulator:
             self.simulator.resample_delta_incls()
         elif ind == 10:
             self.simulator.resample_obs_randoms()
+
+    def get_state(self, seed=None):
+        if seed is None:
+            return self.simulator.get_state()
+        return self.simulator.get_state(int(seed))
+
+    def set_state(self, bytes state):
+        self.simulator.set_state(state)
