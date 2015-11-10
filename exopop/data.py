@@ -53,6 +53,7 @@ def get_burke_gk(**kwargs):
     m &= stlr.radius <= 1.15
 
     # Only include stars with sufficient data coverage.
+    m &= stlr.rrmscdpp07p5 <= 1000.
     m &= stlr.dataspan > 365.25*2.
     m &= stlr.dutycycle > 0.3
 

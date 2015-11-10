@@ -74,6 +74,7 @@ class build_ext(_build_ext):
 if __name__ == "__main__":
     import sys
     import numpy
+    from Cython.Build import cythonize
 
     # Publish the library to PyPI.
     if "publish" in sys.argv[-1]:
@@ -86,23 +87,19 @@ if __name__ == "__main__":
         libraries.append("m")
 
     # Specify the include directories.
-    include_dirs = ["exopop", numpy.get_include()]
-
-    # Check for the Cython source (development mode) and compile it if it
-    # exists.
-    src = os.path.join("exopop", "model")
-    if os.path.exists(src + ".pyx"):
-        from Cython.Build import cythonize
-        src = [src + ".pyx"]
-    else:
-        src = [src + ".cpp"]
-        cythonize = lambda x: x
+    include_dirs = ["exopop/include", numpy.get_include()]
 
     # Set up the extension.
-    ext = Extension("exopop.model", sources=src,
-                    extra_compile_args=["-Wno-unused-function",
-                                        "-Wno-#warnings"],
-                    libraries=libraries, include_dirs=include_dirs)
+    ext = (
+        Extension("exopop.model", sources=["exopop/model.pyx"],
+                  extra_compile_args=["-Wno-unused-function",
+                                      "-Wno-#warnings"],
+                  libraries=libraries, include_dirs=include_dirs),
+        Extension("exopop.completeness", sources=["exopop/completeness.pyx"],
+                  extra_compile_args=["-Wno-unused-function",
+                                      "-Wno-#warnings"],
+                  libraries=libraries, include_dirs=include_dirs),
+    )
 
     # Hackishly inject a constant into builtins to enable importing of the
     # package before the library is built.
@@ -122,8 +119,8 @@ if __name__ == "__main__":
         author="Daniel Foreman-Mackey",
         author_email="danfm@uw.edu",
         packages=["exopop"],
-        ext_modules=cythonize([ext]),
-        url="http://github.com/dfm/exopop-abc",
+        ext_modules=cythonize(ext),
+        url="http://github.com/dfm/lfi",
         license="MIT",
         description="",
         long_description=desc,

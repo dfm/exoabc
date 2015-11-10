@@ -11,6 +11,7 @@ import numpy as np
 import matplotlib.pyplot as pl
 from scipy.stats import ks_2samp
 from scipy.special import factorial
+from joblib import Parallel, delayed
 
 from .data import compute_multiplicity
 
@@ -185,7 +186,10 @@ class ExopopABCModel(object):
             else:
                 R = theta[ind]
             if np.allclose(L, R):
-                raise RuntimeError("slice sampling didn't converge")
+                theta[ind] = x0
+                nld = self.negative_log_distance(theta, state=state)
+                print("Warning: slice sampling didn't converge")
+                return theta, state, nld
 
     def sample(self, niter, initial_thetas, initial_states=None,
                nld_thresh=-np.inf, maxinit=1000):
@@ -193,7 +197,7 @@ class ExopopABCModel(object):
 
         # Allocate memory for the chain.
         thetas = np.empty((niter, nwalkers, ndim))
-        states = [[None for _ in range(nwalkers)] for _ in range(niter)]
+        states = [None for _ in range(niter)]
         nlds = np.empty((niter, nwalkers))
 
         # Save the initial locations and generate some initial states if there
@@ -210,7 +214,7 @@ class ExopopABCModel(object):
             nlds[0, i] = self.negative_log_distance(thetas[0, i],
                                                     state=states[0][i])
             for j in range(maxinit):
-                if np.isfinite(nlds[0, i]):
+                if np.isfinite(nlds[0, i]) and nlds[0, i] > nld_thresh:
                     break
                 seed = np.random.randint(10000)
                 states[0][i] = self.simulator.get_state(seed)
@@ -219,40 +223,16 @@ class ExopopABCModel(object):
             if j == maxinit:
                 assert RuntimeError("too many samples were required to "
                                     "initialize")
+        print("initialiazed")
 
-        level = -np.inf
+        parallel = Parallel(n_jobs=-1, backend="threading")
         for n in range(1, niter):
-            for i in range(nwalkers):
-                theta, state, nld = self.perturb(
-                    thetas[n-1, i], states[n-1][i], nlds[n-1, i], level
-                )
-                thetas[n, i] = theta
-                states[n][i] = state
-                nlds[n, i] = nld
+            results = parallel(delayed(self.perturb)(
+                thetas[n-1, i], states[n-1][i], nlds[n-1, i], nld_thresh
+            ) for i in range(nwalkers))
+            thetas[n], states[n], nlds[n] = zip(*results)
 
         return thetas, states, nlds
-
-        # level = np.percentile(nlds[0], 25)
-
-        assert 0
-
-        # c = 0
-        # while np.any(m) and c < 50:
-        #     for i in np.arange(nwalkers)[m]:
-        #         states[0][i] = self.simulator.get_state(np.random.randint(10000))
-        #         nlds[0, i] = self.negative_log_distance(thetas[0, i],
-        #                                                 state=states[0][i])
-        #     m = ~np.isfinite(nlds[0, :])
-        #     print(m.sum())
-        #     print(nlds[0])
-        #     c += 1
-
-        # for i in range(1, niter):
-        #     nlds[i] = self.perturb(initial_nld=nlds[i-1],
-        #                            nld_thresh=nld_thresh)
-        #     chain[i, :] = theta
-
-        # return chain, nlds
 
     def plot(self, theta, state=None, period_range=None, radius_range=None,
              nsamps=1):

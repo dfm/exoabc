@@ -36,7 +36,7 @@ cdef extern from "simulation.h" namespace "abcsim":
         void set_state (string state)
 
         void add_star (Star* star)
-        vector[CatalogRow] observe (double* params, unsigned* counts, int* flag)
+        vector[CatalogRow] observe (double* params, unsigned* counts, int* flag) nogil
 
         # Re-sampling methods can perturb individual sets of parameters or all
         # of them.
@@ -53,16 +53,13 @@ cdef extern from "simulation.h" namespace "abcsim":
         void resample_delta_incls()
         void resample_obs_randoms()
 
-cdef extern from "completeness.h" namespace "abcsim":
+cdef extern from "completeness.h" namespace "exopop":
 
     cdef cppclass CompletenessModel:
         CompletenessModel ()
 
-    cdef cppclass Q1_Q16_CompletenessModel(CompletenessModel):
-        Q1_Q16_CompletenessModel (double a, double b)
-
     cdef cppclass Q1_Q17_CompletenessModel(CompletenessModel):
-        Q1_Q17_CompletenessModel (double m, double b, double mesthresh, double width)
+        Q1_Q17_CompletenessModel (double, double, double, double, double, double)
 
     cdef cppclass Star:
         Star ()
@@ -95,19 +92,15 @@ cdef class Simulator:
                   double min_radius, double max_radius,
                   double min_period, double max_period,
                   np.ndarray[DTYPE_t, ndim=1] completeness_params,
-                  seed=None, int release=17):
+                  seed=None):
         # Parse the completeness model.
-        if release == 16:
-            self.completeness_model = new Q1_Q16_CompletenessModel(
-                completeness_params[0], completeness_params[1],
-            )
-        elif release == 17:
-            self.completeness_model = new Q1_Q17_CompletenessModel(
-                completeness_params[0], completeness_params[1],
-                completeness_params[2], exp(completeness_params[3]),
-            )
-        else:
-            raise ValueError("invalid 'release'")
+        if completeness_params.shape[0] != 6:
+            raise ValueError("dimension mismatch")
+        self.completeness_model = new Q1_Q17_CompletenessModel(
+            completeness_params[0], completeness_params[1],
+            completeness_params[2], completeness_params[3],
+            completeness_params[4], completeness_params[5],
+        )
 
         # Seed with the time if no seed is provided.
         if seed is None:
@@ -203,10 +196,13 @@ cdef class Simulator:
         self.simulator.resample()
 
         cdef int flag
-        cdef vector[CatalogRow] catalog = \
-            self.simulator.observe(<double*>params.data,
-                                   <unsigned*>counts.data,
-                                   &flag)
+        cdef vector[CatalogRow] catalog
+        cdef Simulation* sim = self.simulator
+        cdef double* p = <double*>params.data
+        cdef unsigned* c = <unsigned*>counts.data
+        with nogil:
+            catalog = sim.observe(p, c, &flag)
+
         if flag:
             raise RuntimeError("simulator failed with status {0}".format(flag))
 
