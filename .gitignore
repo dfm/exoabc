@@ -1,3 +1,5 @@
 *.png
 data
 exopop/*.cpp
+old
+test

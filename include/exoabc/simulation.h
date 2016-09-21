@@ -61,7 +61,10 @@ public:
   };
 
   size_t size () {
-    return parameters_.size();
+    size_t count = 0;
+    for (size_t i = 0; i < parameters_.size(); ++i)
+      if (!(parameters_[i]->is_frozen())) count++;
+    return count;
   };
 
   void sample_parameters (random_state_t& state) {
@@ -108,6 +111,23 @@ public:
       }
     }
     return catalog;
+  };
+
+  std::vector<double> get_parameter_values () const {
+    std::vector<double> params;
+    for (size_t i = 0; i < parameters_.size(); ++i)
+      if (!(parameters_[i]->is_frozen())) params.push_back(parameters_[i]->value());
+    return params;
+  };
+
+  double set_parameter_values (const std::vector<double>& vector) {
+    size_t j = 0;
+    double log_prior = 0.0;
+    for (size_t i = 0; i < parameters_.size(); ++i)
+      if (!(parameters_[i]->is_frozen()))
+        log_prior += parameters_[i]->value(vector[j++]);
+    if (isinf(log_prior) || isnan(log_prior)) return -INFINITY;
+    return log_prior;
   };
 
 private:

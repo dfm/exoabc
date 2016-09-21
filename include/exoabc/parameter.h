@@ -10,7 +10,9 @@ typedef boost::random::mt19937 random_state_t;
 class BaseParameter {
 public:
   virtual double value () const = 0;
+  virtual double value (double value) = 0;
   virtual double sample (random_state_t& state) = 0;
+  virtual bool is_frozen () const = 0;
 };
 
 template <typename Prior>
@@ -27,9 +29,13 @@ public:
 
   void freeze () { frozen_ = true; };
   void thaw () { frozen_ = false; };
+  bool is_frozen () const { return frozen_; };
 
   double value () const { return value_; };
-  double value (double value) { value_ = value; };
+  double value (double value) {
+    value_ = value;
+    return prior_.log_pdf(value);
+  };
   double sample (random_state_t& state) {
     value_ = prior_.sample(state);
     return value_;

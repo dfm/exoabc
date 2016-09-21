@@ -18,6 +18,7 @@ public:
   virtual double sample (random_state_t& state) {
     return this->scale_random(rng_(state));
   };
+  virtual double log_pdf (double x) const { return 0.0; };
   size_t size () const { return parameters_.size(); };
   std::vector<BaseParameter*> parameters () { return parameters_; };
 
@@ -28,14 +29,15 @@ protected:
 
 class Uniform : public Distribution {
 public:
-  Uniform (double mn, double mx) : mn_(mn), mx_(mx) {};
+  Uniform (double mn, double mx) : mn_(mn), dx_(mx - mn) {};
   double sample (random_state_t& state) {
     double u = rng_(state);
-    return mn_ + (mx_ - mn_) * u;
+    return mn_ + dx_ * u;
   };
+  double log_pdf (double x) const { return -log(dx_); };
 
 private:
-  double mn_, mx_;
+  double mn_, dx_;
   boost::random::uniform_01<> rng_;
 };
 
@@ -47,6 +49,10 @@ public:
   };
   double sample (random_state_t& state) {
     return value_;
+  };
+  double log_pdf (double x) const {
+    if (std::abs(x - value_) < DBL_EPSILON) return 0.0;
+    return -INFINITY;
   };
 
 private:
@@ -69,6 +75,14 @@ public:
            x0n = pow(mn_, np1);
     return pow((pow(mx_, np1) - x0n) * u + x0n, 1.0 / np1);
   };
+  double log_pdf (double x) const {
+    if (x < mn_ || x > mx_) return -INFINITY;
+    double n = this->parameters_[0]->value();
+    if (fabs(n + 1.0) < DBL_EPSILON)
+      return -log(log(mx_) - log(mn_)) + n * log(x);
+    double np1 = n+1.0;
+    return log(np1) - log(pow(mx_, np1) - pow(mn_, np1)) + n * log(x);
+  };
 
 private:
   double mn_, mx_;
@@ -85,6 +99,12 @@ public:
     boost::random::normal_distribution<> normal_rng;
     return this->parameters_[0]->value() + exp(this->parameters_[1]->value()) * normal_rng(state);
   };
+  double log_pdf (double x) const {
+    double mu = this->parameters_[0]->value(),
+           sig = exp(this->parameters_[1]->value()),
+           chi = (x - mu) / sig;
+    return -0.5 * (chi*chi + log(2.0*M_PI*sig*sig));
+  };
 };
 
 template <typename T1, typename T2>
@@ -100,6 +120,12 @@ public:
     );
     return beta_rng(state);
   };
+  double log_pdf (double x) const {
+    boost::math::beta_distribution<> beta(
+      exp(this->parameters_[0]->value()), exp(this->parameters_[1]->value())
+    );
+    return log(boost::math::pdf(beta, x));
+  };
 };
 
 template <typename T1>
@@ -110,6 +136,11 @@ public:
   };
   double scale_random (double u) const {
     return sqrt(-2.0 * exp(2.0 * this->parameters_[0]->value()) * log(1.0 - u));
+  };
+  double log_pdf (double x) const {
+    if (x < 0.0) return -INFINITY;
+    double sig = this->parameters_[0]->value(), chi = x / sig;
+    return -0.5 * chi*chi + log(x) - log(sig*sig);
   };
 };
 
@@ -129,6 +160,13 @@ public:
       if (value / norm > u) return 1.0 * i;
     }
     return n-1.0;
+  };
+  double log_pdf (double x) const {
+    size_t n = this->parameters_.size(), ind = size_t(x);
+    if (x < 0 || x >= this->parameters_.size()) return -INFINITY;
+    double norm = 0.0;
+    for (size_t i = 0; i < n; ++i) norm += this->parameters_[i]->value();
+    return log(this->parameters_[ind]->value()) - log(norm);
   };
 };
 
