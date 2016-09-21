@@ -87,15 +87,11 @@ if __name__ == "__main__":
         libraries.append("m")
 
     # Specify the include directories.
-    include_dirs = ["exopop/include", numpy.get_include()]
+    include_dirs = ["include", numpy.get_include()]
 
     # Set up the extension.
     ext = (
-        Extension("exopop.model", sources=["exopop/model.pyx"],
-                  extra_compile_args=["-Wno-unused-function",
-                                      "-Wno-#warnings"],
-                  libraries=libraries, include_dirs=include_dirs),
-        Extension("exopop.completeness", sources=["exopop/completeness.pyx"],
+        Extension("exoabc.sim", sources=[os.path.join("exoabc", "sim.pyx")],
                   extra_compile_args=["-Wno-unused-function",
                                       "-Wno-#warnings"],
                   libraries=libraries, include_dirs=include_dirs),
@@ -107,18 +103,18 @@ if __name__ == "__main__":
         import __builtin__ as builtins
     else:
         import builtins
-    builtins.__EXOPOP_SETUP__ = True
-    import exopop
+    builtins.__EXOABC_SETUP__ = True
+    import exoabc
 
     # Execute the setup command.
     # desc = open("README.rst").read()
     desc = ""
     setup(
-        name="exopop",
-        version=exopop.__version__,
+        name="exoabc",
+        version=exoabc.__version__,
         author="Daniel Foreman-Mackey",
         author_email="danfm@uw.edu",
-        packages=["exopop"],
+        packages=["exoabc"],
         ext_modules=cythonize(ext),
         url="http://github.com/dfm/lfi",
         license="MIT",

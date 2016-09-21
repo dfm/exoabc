@@ -126,7 +126,7 @@ public:
     for (size_t i = 0; i < parameters_.size(); ++i)
       if (!(parameters_[i]->is_frozen()))
         log_prior += parameters_[i]->value(vector[j++]);
-    if (isinf(log_prior) || isnan(log_prior)) return -INFINITY;
+    if (std::isinf(log_prior) || std::isnan(log_prior)) return -INFINITY;
     return log_prior;
   };
 

@@ -44,7 +44,7 @@ private:
 class Delta : public Distribution {
 public:
   Delta (double value) : value_(value) {};
-  double scale_random (double u) {
+  double scale_random (double u) const {
     return value_;
   };
   double sample (random_state_t& state) {
