@@ -1,307 +1,132 @@
-#ifndef _ABC_SIMULATION_H_
-#define _ABC_SIMULATION_H_
+#ifndef _EXOABC_SIMULATION_H_
+#define _EXOABC_SIMULATION_H_
 
-#include <cmath>
-#include <cfloat>
 #include <vector>
-#include <string>
-#include <sstream>
-#include <boost/random.hpp>
-#include <boost/math/distributions.hpp>
-#include <boost/random/beta_distribution.hpp>
 
-#include "completeness.h"
+#include "exoabc/parameter.h"
+#include "exoabc/distributions.h"
+#include "exoabc/observation_model.h"
 
-using std::vector;
-using std::string;
-using boost::math::cdf;
-
-using exopop::Star;
-
-namespace abcsim {
+namespace exoabc {
 
 struct CatalogRow {
     unsigned starid;
     double period;
     double radius;
+    double duration;
+    double depth;
 };
 
 template <
-    typename Period,
-    typename Radius,
-    typename Eccentricity,
-    typename MutualInclination
+  typename Period,
+  typename Radius,
+  typename Eccen,
+  typename Width,
+  typename Multi
 >
 class Simulation {
 public:
-    Simulation (
-        unsigned nstars,
-        unsigned nplanets,
-        Period period_distribution,
-        Radius radius_distribution,
-        Eccentricity eccentricity_distribution,
-        MutualInclination mutual_inclination_distribution,
-                double min_radius, double max_radius,
-                double min_period, double max_period,
-                unsigned seed, double alpha=0.867, double beta=3.03)
-    : min_radius_(min_radius), max_radius_(max_radius),
-      min_period_(min_period), max_period_(max_period),
-      nstars_(nstars), nplanets_(nplanets), ntot_(nstars * nplanets),
-      multi_randoms_(nstars),
-      q1_randoms_(nstars),
-      q2_randoms_(nstars),
-      incl_randoms_(nstars),
-      radius_randoms_(nstars*nplanets),
-      period_randoms_(nstars*nplanets),
-      eccen_randoms_(nstars*nplanets),
-      omega_randoms_(nstars*nplanets),
-      mutual_incl_randoms_(nstars),
-      delta_incl_randoms_(nstars*nplanets),
-      obs_randoms_(nstars*nplanets),
-      stars_(), rng_(seed),
-      beta_generator_(alpha, beta)
-    {
-        resample();
-    };
-    ~Simulation () {};
-    void clean_up () {
-        for (unsigned i = 0; i < stars_.size(); ++i) delete stars_[i];
-    };
-    void add_star (Star* star) {
-        stars_.push_back(star);
-    };
-    Simulation* copy () {
-        return new Simulation(*this);
-    };
+  Simulation (
+    Period& period_distribution,
+    Radius& radius_distribution,
+    Eccen&  eccen_distribution,
+    Width&  width_distribution,
+    Multi&  multi_distribution
+  )
+  : period_distribution_(period_distribution)
+  , radius_distribution_(radius_distribution)
+  , eccen_distribution_ (eccen_distribution)
+  , width_distribution_ (width_distribution)
+  , multi_distribution_ (multi_distribution)
+  {
+    add_parameters(period_distribution_.parameters());
+    add_parameters(radius_distribution_.parameters());
+    add_parameters(eccen_distribution_.parameters());
+    add_parameters(width_distribution_.parameters());
+    add_parameters(multi_distribution_.parameters());
+  };
 
-    string get_state () const {
-        std::stringstream ss;
-        ss << rng_;
-        return ss.str();
-    };
+  void add_star (const BaseStar* star) {
+    stars_.push_back(star);
+  };
 
-    string get_state (unsigned seed) const {
-        std::stringstream ss;
-        boost::random::mt19937 gen(seed);
-        ss << gen;
-        return ss.str();
-    };
+  template <typename ParamType>
+  void add_parameter (ParamType* parameter) {
+    parameters_.push_back(parameter);
+  };
 
-    void set_state (string state) {
-        std::stringstream ss(state);
-        ss >> rng_;
-        uniform_generator_.reset();
-        normal_generator_.reset();
-        beta_generator_.reset();
-    };
+  void add_parameters (std::vector<BaseParameter*> parameters) {
+    for (size_t i = 0; i < parameters.size(); ++i)
+      parameters_.push_back(parameters[i]);
+  };
 
-    // Re-sample the underlying parameters.
-    void resample () {
-        resample_multis();
-        resample_q1();
-        resample_q2();
-        resample_incls();
-        resample_radii();
-        resample_periods();
-        resample_eccens();
-        resample_omegas();
-        resample_mutual_incls();
-        resample_delta_incls();
-        resample_obs_randoms();
-    };
-    void resample_multis () {
-        for (unsigned i = 0; i < nstars_; ++i)
-            multi_randoms_[i] = uniform_generator_(rng_);
-    };
-    void resample_q1 () {
-        for (unsigned i = 0; i < nstars_; ++i)
-            q1_randoms_[i] = uniform_generator_(rng_);
-    };
-    void resample_q2 () {
-        for (unsigned i = 0; i < nstars_; ++i)
-            q2_randoms_[i] = uniform_generator_(rng_);
-    };
-    void resample_incls () {
-        for (unsigned i = 0; i < nstars_; ++i)
-            incl_randoms_[i] = acos(uniform_generator_(rng_));
-    };
-    void resample_radii () {
-        for (unsigned i = 0; i < ntot_; ++i)
-            radius_randoms_[i] = uniform_generator_(rng_);
-    };
-    void resample_periods () {
-        for (unsigned i = 0; i < ntot_; ++i)
-            period_randoms_[i] = uniform_generator_(rng_);
-    };
-    void resample_eccens () {
-        for (unsigned i = 0; i < ntot_; ++i)
-            eccen_randoms_[i] = beta_generator_(rng_);
-    };
-    void resample_omegas () {
-        for (unsigned i = 0; i < ntot_; ++i)
-            omega_randoms_[i] = M_PI * uniform_generator_(rng_);
-    };
-    void resample_mutual_incls () {
-        for (unsigned i = 0; i < nstars_; ++i)
-            mutual_incl_randoms_[i] = uniform_generator_(rng_);
-    };
-    void resample_delta_incls () {
-        for (unsigned i = 0; i < ntot_; ++i)
-            delta_incl_randoms_[i] = normal_generator_(rng_);
-    };
-    void resample_obs_randoms () {
-        for (unsigned i = 0; i < ntot_; ++i)
-            obs_randoms_[i] = uniform_generator_(rng_);
-    };
+  size_t size () {
+    return parameters_.size();
+  };
 
-    vector<CatalogRow> observe (double* params, unsigned* counts, int* flag) {
-        *flag = 0;
+  void sample_parameters (random_state_t& state) {
+    for (size_t i = 0; i < parameters_.size(); ++i)
+      parameters_[i]->sample(state);
+  };
 
-        // Initialize to zero.
-        unsigned i, j, n, count;
-        for (i = 0; i < nplanets_; ++i) counts[i] = 0;
+  std::vector<CatalogRow> sample_population (random_state_t& state) {
+    std::vector<CatalogRow> catalog;
+    for (size_t i = 0; i < stars_.size(); ++i) {
+      // Get the star
+      const BaseStar* star = stars_[i];
 
-        // Initialize the catalog.
-        vector<CatalogRow> catalog;
+      // Sample a number of planets
+      size_t N = size_t(multi_distribution_.sample(state));
 
-        // Unpack the parameters.
-        vector<double> multi_params(nplanets_ - 1);
-        double radius, period, incl, omega, eccen, Q, r,
-               prob, norm = 0.0, mutual_incl, q1, q2,
-               radius_power1 = params[0],
-               radius_power2 = params[1],
-               radius_break = params[2],
-               period_power1 = params[3],
-               period_power2 = params[4],
-               period_break = params[5],
-               incl_sigma = params[6];
+      // Sample the mean inclination and the inclination width
+      double mean_incl = M_PI * (2.0 * uniform_rng_(state) - 1.0),
+             incl_width = width_distribution_.sample(state);
 
-        // Check that the break locations are in the correct ranges.
-        if (radius_break < min_radius_ || max_radius_ < radius_break ||
-                period_break < min_period_ || max_period_ < period_break) {
-            *flag = 2;
-            return catalog;
+      // Loop over the planets
+      for (size_t n = 0; n < N; ++n) {
+        // Base parameters
+        double radius = radius_distribution_.sample(state),
+               period = period_distribution_.sample(state),
+               eccen  = eccen_distribution_.sample(state),
+               omega  = 2.0 * M_PI * uniform_rng_(state),
+               q1     = uniform_rng_(state),
+               q2     = uniform_rng_(state);
+
+        // Inclination
+        double incl = mean_incl + incl_width * normal_rng_(state);
+
+        // Detection probability
+        double duration, depth;
+        double pdet = star->get_completeness(q1, q2, period, radius, incl, eccen, omega,
+                                             &duration, &depth);
+
+        // Is the planet detected?
+        if (uniform_rng_(state) < pdet) {
+          CatalogRow row = {i, period, radius, duration, depth};
+          catalog.push_back(row);
         }
-
-        // Get the multiplicity parameters and fail if they are invalid.
-        for (i = 0; i < nplanets_-1; ++i) {
-            multi_params[i] = exp(params[7+i]);
-            norm += multi_params[i];
-        }
-        if (norm > 1.0) { *flag = 1; return catalog; }
-
-        for (i = 0; i < nstars_; ++i) {
-            Star* star = stars_[i];
-            count = 0;
-            prob = 0.0;
-
-            // The mutual inclination is drawn from a Rayleigh distribution.
-            mutual_incl = incl_sigma * sqrt(-2*log(mutual_incl_randoms_[i]));
-
-            // The limb darkening coefficients are drawn from a uniform distribution.
-            q1 = q1_randoms_[i];
-            q2 = q2_randoms_[i];
-
-            for (j = 0; j < nplanets_; ++j) {
-                // Impose the multiplicity constraint.
-                prob += multi_params[j];
-                if (prob >= multi_randoms_[i]) break;
-
-                n = i*nplanets_ + j;
-
-                // Samples
-                radius = broken_power_law(radius_power1, radius_power2,
-                                          radius_break, min_radius_,
-                                          max_radius_, radius_randoms_[n]);
-                period = broken_power_law(period_power1, period_power2,
-                                          period_break, min_period_,
-                                          max_period_, period_randoms_[n]);
-                incl = incl_randoms_[i] + mutual_incl * delta_incl_randoms_[n];
-                eccen = eccen_randoms_[n];
-                omega = omega_randoms_[n];
-
-                // Compute the completeness.
-                Q = star->get_completeness(q1, q2, period, radius, incl, eccen, omega);
-                r = obs_randoms_[n];
-                if (r <= Q) {
-                    CatalogRow row = {i, period, radius};
-                    catalog.push_back(row);
-                    count += 1;
-                }
-            }
-            counts[count] += 1;
-        }
-
-        return catalog;
-    };
+      }
+    }
+    return catalog;
+  };
 
 private:
-    double min_radius_, max_radius_, min_period_, max_period_;
-    unsigned nstars_, nplanets_, ntot_;
-    vector<double> multi_randoms_,
-                   q1_randoms_,
-                   q2_randoms_,
-                   incl_randoms_,
-                   radius_randoms_,
-                   period_randoms_,
-                   eccen_randoms_,
-                   omega_randoms_,
-                   mutual_incl_randoms_,
-                   delta_incl_randoms_,
-                   obs_randoms_;
-    vector<Star*> stars_;
-    boost::random::mt19937 rng_;
-    boost::random::uniform_01<> uniform_generator_;
-    boost::random::normal_distribution<> normal_generator_;
-    boost::random::beta_distribution<> beta_generator_;
+  std::vector<BaseParameter*> parameters_;
+  std::vector<const BaseStar*> stars_;
 
-    double power_law (double n, double mn, double mx, double u) const {
-        if (fabs(n + 1.0) < DBL_EPSILON) {
-            double lnmn = log(mn);
-            return mn * exp(u * (log(mx) - lnmn));
-        }
-        double np1 = n+1.0,
-               x0n = pow(mn, np1);
-        return pow((pow(mx, np1) - x0n) * u + x0n, 1.0 / np1);
-    };
+  // Random number generators
+  boost::random::uniform_01<> uniform_rng_;
+  boost::random::normal_distribution<> normal_rng_;
 
-    double broken_power_law (double a1, double a2, double x0,
-                             double xmin, double xmax, double u) const {
-        double a11 = a1 + 1.0,
-               a21 = a2 + 1.0,
-               x0da = pow(x0, a2-a1),
-               fmin1, fmin2,
-               N1, N2, N;
-
-        if (fabs(a11) < DBL_EPSILON) {
-            fmin1 = log(xmin);
-            N1 = x0da*(log(x0)-fmin1);
-        } else {
-            fmin1 = pow(xmin, a11);
-            N1 = x0da*(pow(x0, a11)-fmin1)/a11;
-        }
-        if (fabs(a21) < DBL_EPSILON) {
-            fmin2 = log(x0);
-            N2 = log(xmax)-fmin2;
-        } else {
-            fmin2 = pow(x0, a21);
-            N2 = (pow(xmax, a21)-fmin2)/a21;
-        }
-        N = N1 + N2;
-
-        // Low x
-        if (u <= N1 / N) {
-            if (fabs(a11) < DBL_EPSILON) return xmin*exp(u*N/x0da);
-            return pow(a11*u*N/x0da + fmin1, 1.0/a11);
-        }
-
-        // High x
-        u -= N1 / N;
-        if (fabs(a21) < DBL_EPSILON) return xmin*exp(u*N);
-        return pow(a21*u*N + fmin2, 1.0/a21);
-    };
-};
+  // Population distributions.
+  Period period_distribution_;
+  Radius radius_distribution_;
+  Eccen  eccen_distribution_;
+  Width  width_distribution_;
+  Multi  multi_distribution_;
 
 };
 
-#endif  // _ABC_SIMULATION_H_
+}; // namespace exoabc
+
+#endif  // _EXOABC_SIMULATION_

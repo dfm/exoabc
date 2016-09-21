@@ -7,8 +7,14 @@ namespace exoabc {
 
 typedef boost::random::mt19937 random_state_t;
 
+class BaseParameter {
+public:
+  virtual double value () const = 0;
+  virtual double sample (random_state_t& state) = 0;
+};
+
 template <typename Prior>
-class Parameter {
+class Parameter : public BaseParameter {
 public:
   Parameter (double value)
     : value_(value), frozen_(true), prior_(Prior(value)) {};
