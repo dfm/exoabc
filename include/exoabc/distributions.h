@@ -18,6 +18,7 @@ public:
   virtual double value (double value) = 0;
   virtual double sample (random_state_t& state) = 0;
   virtual bool is_frozen () const = 0;
+  virtual double log_pdf () const = 0;
 };
 
 class Distribution {
@@ -47,7 +48,10 @@ public:
     double u = rng_(state);
     return mn_ + dx_ * u;
   };
-  double log_pdf (double x) const { return -log(dx_); };
+  double log_pdf (double x) const {
+    if (x < mn_ || x > mn_ + dx_) return -INFINITY;
+    return -log(dx_);
+  };
 
 private:
   double mn_, dx_;
@@ -100,6 +104,7 @@ public:
     value_ = prior_->sample(state);
     return value_;
   };
+  double log_pdf () const { return prior_->log_pdf(value_); };
 
 private:
   Distribution* prior_;

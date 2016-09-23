@@ -89,35 +89,13 @@ cdef extern from "exoabc/exoabc.h" namespace "exoabc":
             Distribution* width_distribution,
             Distribution* multi_distribution
         )
+        size_t size ()
         void add_star (Star* star)
+        void sample_parameters (random_state_t) nogil
         vector[CatalogRow] sample_population (random_state_t) nogil
-
-    #     void clean_up ()
-    #     Simulation* copy()
-    #     string get_state ()
-    #     string get_state (unsigned seed)
-    #     void set_state (string state)
-
-    #     void add_star (Star* star)
-    #     vector[CatalogRow] sample_population () nogil
-
-# cdef extern from "completeness.h" namespace "exopop":
-
-    # cdef cppclass CompletenessModel:
-    #     CompletenessModel ()
-
-    # cdef cppclass Q1_Q17_CompletenessModel(CompletenessModel):
-    #     Q1_Q17_CompletenessModel (double, double, double, double, double, double)
-
-    # cdef cppclass Star:
-    #     Star ()
-    #     Star (
-    #         CompletenessModel* completeness_model,
-    #         double mass, double radius,
-    #         double dataspan, double dutycycle,
-    #         unsigned n_cdpp, const double* cdpp_x, const double* cdpp_y,
-    #         unsigned n_thresh, const double* thresh_x, const double* thresh_y
-    #     )
+        void get_parameter_values (double* params)
+        double set_parameter_values (const double* params)
+        double log_pdf ()
 
 
 cdef class Simulator:
@@ -127,12 +105,6 @@ cdef class Simulator:
     semi-analytic completeness model.
 
     """
-
-    # cdef unsigned nplanets
-    # cdef unsigned cached
-    # cdef object period_range
-    # cdef object radius_range
-    # cdef Simulation* cached_simulator
 
     cdef random_state_t     state
     cdef Simulation*        simulation
@@ -238,10 +210,27 @@ cdef class Simulator:
         del self.simulation
         del self.completeness_model
 
-    def sample_population(self):
+    def sample_parameters(self, seed=None):
+        # Run the simulation
+        cdef random_state_t state
+        if seed is None:
+            state = self.state
+        else:
+            state = random_state_t(int(seed))
+        with nogil:
+            self.simulation.sample_parameters(state)
+        return self.simulation.log_pdf()
+
+    def sample_population(self, seed=None):
+        # Run the simulation
+        cdef random_state_t state
+        if seed is None:
+            state = self.state
+        else:
+            state = random_state_t(int(seed))
         cdef vector[CatalogRow] catalog
         with nogil:
-            catalog = self.simulation.sample_population(self.state)
+            catalog = self.simulation.sample_population(state)
 
         # Convert the simulation to a numpy array
         result = np.empty(catalog.size(), dtype=[
@@ -257,110 +246,16 @@ cdef class Simulator:
             result["koi_depth"][i] = catalog[i].depth
         return result
 
-    # def observe(self, np.ndarray[DTYPE_t, ndim=1] params, state=None):
-    #     """
-    #     Observe the current simulation for a given set of hyperparameters.
-    #     The parameters are as follows:
+    def get_parameters(self):
+        cdef np.ndarray[DTYPE_t, ndim=1] params = np.empty(self.simulation.size())
+        self.simulation.get_parameter_values(<double*>params.data)
+        return params
 
-    #     .. code-block:: python
-    #         [radius_power1, radius_power2, radius_break,
-    #          period_power1, period_power2, period_break,
-    #          std_of_incl_distribution, ln_multiplicity...(nmax parameters)]
+    def set_parameters(self, value):
+        cdef np.ndarray[DTYPE_t, ndim=1] params = np.atleast_1d(value)
+        if params.shape[0] != self.simulation.size():
+            raise ValueError("dimension mismatch")
+        return self.simulation.set_parameter_values(<double*>params.data)
 
-    #     :param state: (optional)
-    #         The random state can be provided to ensure a specific catalog.
-
-    #     """
-    #     if params.shape[0] != 7 + self.nplanets - 1:
-    #         raise ValueError("dimension mismatch")
-
-    #     cdef np.ndarray[DTYPE_u_t, ndim=1] counts = np.empty(self.nplanets,
-    #                                                          dtype=DTYPE_u)
-
-    #     if state is not None:
-    #         self.simulator.set_state(state)
-    #     else:
-    #         state = self.simulator.get_state()
-    #     self.simulator.resample()
-
-    #     cdef int flag
-    #     cdef vector[CatalogRow] catalog
-    #     cdef Simulation* sim = self.simulator
-    #     cdef double* p = <double*>params.data
-    #     cdef unsigned* c = <unsigned*>counts.data
-    #     with nogil:
-    #         catalog = sim.observe(p, c, &flag)
-
-    #     if flag:
-    #         raise RuntimeError("simulator failed with status {0}".format(flag))
-
-    #     # Copy the catalog.
-    #     cdef int i
-    #     cdef np.ndarray[DTYPE_u_t, ndim=1] starids = np.empty(catalog.size(),
-    #                                                           dtype=DTYPE_u)
-    #     cdef np.ndarray[DTYPE_t, ndim=2] cat_out = np.empty((catalog.size(), 2),
-    #                                                         dtype=DTYPE)
-    #     for i in range(cat_out.shape[0]):
-    #         starids[i] = catalog[i].starid
-    #         cat_out[i, 0] = catalog[i].period
-    #         cat_out[i, 1] = catalog[i].radius
-
-    #     return counts, starids, cat_out, state
-
-    # def resample(self):
-    #     """
-    #     Re-sample all the per-planet and per-star parameters from their priors.
-
-    #     """
-    #     self.simulator.resample()
-
-    # def revert(self):
-    #     if self.cached:
-    #         del self.simulator
-    #         self.simulator = self.cached_simulator
-    #         self.cached = 0
-
-    # def perturb(self):
-    #     """
-    #     Randomly re-sample one set of per-planet or per-star parameters (i.e.
-    #     all the periods or radii or whatever) from the prior.
-
-    #     """
-    #     # First, cache the current simulation state for reverting.
-    #     if self.cached:
-    #         del self.cached_simulator
-    #     self.cached_simulator = self.simulator.copy()
-    #     self.cached = 1
-
-    #     # Then select a parameter to update.
-    #     cdef int ind = np.random.randint(11)
-    #     if ind == 0:
-    #         self.simulator.resample_multis()
-    #     elif ind == 1:
-    #         self.simulator.resample_q1()
-    #     elif ind == 2:
-    #         self.simulator.resample_q2()
-    #     elif ind == 3:
-    #         self.simulator.resample_incls()
-    #     elif ind == 4:
-    #         self.simulator.resample_radii()
-    #     elif ind == 5:
-    #         self.simulator.resample_periods()
-    #     elif ind == 6:
-    #         self.simulator.resample_eccens()
-    #     elif ind == 7:
-    #         self.simulator.resample_omegas()
-    #     elif ind == 8:
-    #         self.simulator.resample_mutual_incls()
-    #     elif ind == 9:
-    #         self.simulator.resample_delta_incls()
-    #     elif ind == 10:
-    #         self.simulator.resample_obs_randoms()
-
-    # def get_state(self, seed=None):
-    #     if seed is None:
-    #         return self.simulator.get_state()
-    #     return self.simulator.get_state(int(seed))
-
-    # def set_state(self, bytes state):
-    #     self.simulator.set_state(state)
+    def log_pdf(self):
+        return self.simulation.log_pdf()

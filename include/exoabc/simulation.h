@@ -121,12 +121,31 @@ public:
     return params;
   };
 
+  void get_parameter_values (double* params) const {
+    size_t j = 0;
+    for (size_t i = 0; i < parameters_.size(); ++i)
+      if (!(parameters_[i]->is_frozen())) params[j++] = parameters_[i]->value();
+  };
+
   double set_parameter_values (const std::vector<double>& vector) {
+    return set_parameter_values((double*)&(vector[0]));
+  };
+
+  double set_parameter_values (const double* vector) {
     size_t j = 0;
     double log_prior = 0.0;
     for (size_t i = 0; i < parameters_.size(); ++i)
       if (!(parameters_[i]->is_frozen()))
         log_prior += parameters_[i]->value(vector[j++]);
+    if (std::isinf(log_prior) || std::isnan(log_prior)) return -INFINITY;
+    return log_prior;
+  };
+
+  double log_pdf () const {
+    double log_prior = 0.0;
+    for (size_t i = 0; i < parameters_.size(); ++i)
+      if (!(parameters_[i]->is_frozen()))
+        log_prior += parameters_[i]->log_pdf();
     if (std::isinf(log_prior) || std::isnan(log_prior)) return -INFINITY;
     return log_prior;
   };
