@@ -46,7 +46,8 @@ def get_burke_gk(**kwargs):
     tables on the Exoplanet Archive.
 
     """
-    stlr = get_catalog("q1_q17_dr24_stellar", **kwargs)
+    stlr = get_catalog("q1_q16_stellar", **kwargs)
+    # stlr = get_catalog("q1_q17_dr24_stellar", **kwargs)
 
     # Select G & K dwarfs.
     m = (4200 <= stlr.teff) & (stlr.teff <= 6100)
@@ -69,7 +70,8 @@ def get_ballard_m(**kwargs):
     ``stellar`` tables on the Exoplanet Archive.
 
     """
-    stlr = get_catalog("q1_q17_dr24_stellar", **kwargs)
+    stlr = get_catalog("q1_q16_stellar", **kwargs)
+    # stlr = get_catalog("q1_q17_dr24_stellar", **kwargs)
 
     # Select M dwarfs.
     m = (3950 <= stlr.teff) & (stlr.teff <= 4200)
@@ -84,7 +86,7 @@ def get_ballard_m(**kwargs):
     return pd.DataFrame(stlr[m])
 
 
-def get_candidates(stlr=None, mesthresh=15.0, period_range=None,
+def get_candidates(stlr=None, mesthresh=None, period_range=None,
                    radius_range=None, **kwargs):
     """
     Get the Q1-Q17 candidates from the KOI table on the Exoplanet Archive.
@@ -95,7 +97,8 @@ def get_candidates(stlr=None, mesthresh=15.0, period_range=None,
     :param radius_range: restrict to a range of radii
 
     """
-    kois = get_catalog("q1_q17_dr24_koi", **kwargs)
+    kois = get_catalog("q1_q16_koi", **kwargs)
+    # kois = get_catalog("q1_q17_dr24_koi", **kwargs)
 
     # Join on the stellar list.
     if stlr is not None:
@@ -112,7 +115,9 @@ def get_candidates(stlr=None, mesthresh=15.0, period_range=None,
         m &= kois.koi_prad < radius_range[1]
 
     # Apply the MES thresholding.
-    m &= np.isfinite(kois.koi_max_mult_ev) & (kois.koi_max_mult_ev > 15.0)
+    if mesthresh is not None:
+        m &= np.isfinite(kois.koi_max_mult_ev)
+        m &= (kois.koi_max_mult_ev > mesthresh)
 
     return pd.DataFrame(kois[m])
 

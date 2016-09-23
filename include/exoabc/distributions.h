@@ -75,13 +75,13 @@ private:
 class Parameter : public BaseParameter {
 public:
   Parameter (double value)
-    : value_(value), frozen_(true), prior_(new Delta(value)) {};
+    : prior_(new Delta(value)), frozen_(true), value_(value) {};
   Parameter (Distribution* prior)
-    : frozen_(false), prior_(prior) {};
+    : prior_(prior), frozen_(false) {};
   Parameter (Distribution* prior, random_state_t& state)
-    : value_(prior->sample(state)), frozen_(false), prior_(prior) {};
+    : prior_(prior), frozen_(false), value_(prior->sample(state)) {};
   Parameter (Distribution* prior, double value, bool frozen = false)
-    : value_(value), frozen_(frozen), prior_(prior) {};
+    : prior_(prior), frozen_(frozen), value_(value) {};
 
   ~Parameter () {
     delete prior_;
@@ -190,11 +190,12 @@ public:
 
 class Multinomial : public Distribution {
 public:
-
+  Multinomial (BaseParameter* parameter) {
+    this->parameters_.push_back(parameter);
+  };
   void add_bin (BaseParameter* parameter) {
     this->parameters_.push_back(parameter);
   };
-
   double scale_random (double u) const {
     size_t n = this->parameters_.size();
     double norm = 0.0, value = 0.0;
