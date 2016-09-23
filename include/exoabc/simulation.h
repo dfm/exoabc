@@ -2,6 +2,8 @@
 #define _EXOABC_SIMULATION_H_
 
 #include <vector>
+#include <string>
+#include <sstream>
 
 #include "exoabc/distributions.h"
 #include "exoabc/observation_model.h"

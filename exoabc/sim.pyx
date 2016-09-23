@@ -27,6 +27,8 @@ cdef extern from "boost/random.hpp" namespace "boost::random":
 cdef extern from "exoabc/exoabc.h" namespace "exoabc":
 
     ctypedef mt19937 random_state_t
+    cdef string serialize_state (const random_state_t s)
+    cdef random_state_t deserialize_state (const string s)
 
     # Distributions
     cdef cppclass BaseParameter:
@@ -178,21 +180,24 @@ cdef class Simulator:
         cdef np.ndarray[DTYPE_t, ndim=1] cdpp_y
         cdef np.ndarray[DTYPE_t, ndim=1] thr_x
         cdef np.ndarray[DTYPE_t, ndim=1] thr_y
+
+        # Which columns have the cdpp
+        cdpp_cols = [k for k in stars.keys() if k.startswith("rrmscdpp")]
+        cdpp_x = np.array([k[-4:].replace("p", ".") for k in cdpp_cols], dtype=float)
+        inds = np.argsort(cdpp_x)
+
+        # And the thresholds
+        thr_cols = [k for k in stars.keys() if k.startswith("mesthres")]
+        thr_x = np.array([k[-4:].replace("p", ".") for k in thr_cols], dtype=float)
+        inds = np.argsort(thr_x)
+
         for _, star in stars.iterrows():
             # Pull out the CDPP values.
-            cdpp_cols = [k for k in star.keys() if k.startswith("rrmscdpp")]
-            cdpp_x = np.array([k[-4:].replace("p", ".") for k in cdpp_cols],
-                              dtype=float)
-            inds = np.argsort(cdpp_x)
             cdpp_x = np.ascontiguousarray(cdpp_x[inds], dtype=np.float64)
             cdpp_y = np.ascontiguousarray(star[cdpp_cols][inds],
                                           dtype=np.float64)
 
             # And the MES thresholds.
-            thr_cols = [k for k in star.keys() if k.startswith("mesthres")]
-            thr_x = np.array([k[-4:].replace("p", ".") for k in thr_cols],
-                             dtype=float)
-            inds = np.argsort(thr_x)
             thr_x = np.ascontiguousarray(thr_x[inds], dtype=np.float64)
             thr_y = np.ascontiguousarray(star[thr_cols][inds],
                                          dtype=np.float64)
@@ -210,27 +215,18 @@ cdef class Simulator:
         del self.simulation
         del self.completeness_model
 
-    def sample_parameters(self, seed=None):
+    def sample_parameters(self):
         # Run the simulation
         cdef random_state_t state
-        if seed is None:
-            state = self.state
-        else:
-            state = random_state_t(int(seed))
         with nogil:
-            self.simulation.sample_parameters(state)
+            self.simulation.sample_parameters(self.state)
         return self.simulation.log_pdf()
 
-    def sample_population(self, seed=None):
+    def sample_population(self):
         # Run the simulation
-        cdef random_state_t state
-        if seed is None:
-            state = self.state
-        else:
-            state = random_state_t(int(seed))
         cdef vector[CatalogRow] catalog
         with nogil:
-            catalog = self.simulation.sample_population(state)
+            catalog = self.simulation.sample_population(self.state)
 
         # Convert the simulation to a numpy array
         result = np.empty(catalog.size(), dtype=[
@@ -259,3 +255,11 @@ cdef class Simulator:
 
     def log_pdf(self):
         return self.simulation.log_pdf()
+
+    property state:
+        def __get__(self):
+            return serialize_state(self.state)
+
+        def __set__(self, value):
+            cdef string blob = value
+            self.state = deserialize_state(blob)

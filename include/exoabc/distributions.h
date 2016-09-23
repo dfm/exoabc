@@ -4,12 +4,27 @@
 #include <cmath>
 #include <cfloat>
 #include <vector>
+#include <string>
+#include <sstream>
 #include <boost/random.hpp>
 #include <boost/math/distributions.hpp>
 
 namespace exoabc {
 
 typedef boost::random::mt19937 random_state_t;
+
+// Random state serialization
+std::string serialize_state (const random_state_t& state) {
+  std::stringstream ss;
+  ss << state;
+  return ss.str();
+}
+random_state_t deserialize_state (const std::string& blob) {
+  std::stringstream ss(blob);
+  random_state_t state;
+  ss >> state;
+  return state;
+}
 
 class BaseParameter {
 public:
