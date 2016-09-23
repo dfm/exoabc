@@ -3,7 +3,6 @@
 
 #include <vector>
 
-#include "exoabc/parameter.h"
 #include "exoabc/distributions.h"
 #include "exoabc/observation_model.h"
 
@@ -17,21 +16,14 @@ struct CatalogRow {
     double depth;
 };
 
-template <
-  typename Period,
-  typename Radius,
-  typename Eccen,
-  typename Width,
-  typename Multi
->
 class Simulation {
 public:
   Simulation (
-    Period& period_distribution,
-    Radius& radius_distribution,
-    Eccen&  eccen_distribution,
-    Width&  width_distribution,
-    Multi&  multi_distribution
+    Distribution* period_distribution,
+    Distribution* radius_distribution,
+    Distribution* eccen_distribution,
+    Distribution* width_distribution,
+    Distribution* multi_distribution
   )
   : period_distribution_(period_distribution)
   , radius_distribution_(radius_distribution)
@@ -39,11 +31,20 @@ public:
   , width_distribution_ (width_distribution)
   , multi_distribution_ (multi_distribution)
   {
-    add_parameters(period_distribution_.parameters());
-    add_parameters(radius_distribution_.parameters());
-    add_parameters(eccen_distribution_.parameters());
-    add_parameters(width_distribution_.parameters());
-    add_parameters(multi_distribution_.parameters());
+    add_parameters(period_distribution_->parameters());
+    add_parameters(radius_distribution_->parameters());
+    add_parameters(eccen_distribution_->parameters());
+    add_parameters(width_distribution_->parameters());
+    add_parameters(multi_distribution_->parameters());
+  };
+
+  ~Simulation () {
+    delete period_distribution_;
+    delete radius_distribution_;
+    delete eccen_distribution_;
+    delete width_distribution_;
+    delete multi_distribution_;
+    for (size_t i = 0; i < stars_.size(); ++i) delete stars_[i];
   };
 
   void add_star (const BaseStar* star) {
@@ -79,18 +80,18 @@ public:
       const BaseStar* star = stars_[i];
 
       // Sample a number of planets
-      size_t N = size_t(multi_distribution_.sample(state));
+      size_t N = size_t(multi_distribution_->sample(state));
 
       // Sample the mean inclination and the inclination width
       double mean_incl = M_PI * (2.0 * uniform_rng_(state) - 1.0),
-             incl_width = width_distribution_.sample(state);
+             incl_width = width_distribution_->sample(state);
 
       // Loop over the planets
       for (size_t n = 0; n < N; ++n) {
         // Base parameters
-        double radius = radius_distribution_.sample(state),
-               period = period_distribution_.sample(state),
-               eccen  = eccen_distribution_.sample(state),
+        double radius = radius_distribution_->sample(state),
+               period = period_distribution_->sample(state),
+               eccen  = eccen_distribution_->sample(state),
                omega  = 2.0 * M_PI * uniform_rng_(state),
                q1     = uniform_rng_(state),
                q2     = uniform_rng_(state);
@@ -139,11 +140,11 @@ private:
   boost::random::normal_distribution<> normal_rng_;
 
   // Population distributions.
-  Period period_distribution_;
-  Radius radius_distribution_;
-  Eccen  eccen_distribution_;
-  Width  width_distribution_;
-  Multi  multi_distribution_;
+  Distribution* period_distribution_;
+  Distribution* radius_distribution_;
+  Distribution* eccen_distribution_;
+  Distribution* width_distribution_;
+  Distribution* multi_distribution_;
 
 };
 

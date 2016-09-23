@@ -93,6 +93,7 @@ private:
 
 class BaseStar {
 public:
+  virtual ~BaseStar () {};
   virtual double get_completeness (double q1, double q2, double period, double rp,
                                    double incl, double e, double omega,
                                    double* duration, double* depth) const = 0;
@@ -103,7 +104,7 @@ template <typename CompType>
 class Star : public BaseStar {
 public:
   Star (
-    const CompType& completeness_model,
+    const CompType* completeness_model,
     double mass, double radius,
     double dataspan, double dutycycle,
     unsigned n_cdpp, const double* cdpp_x, const double* cdpp_y,
@@ -178,11 +179,11 @@ public:
     mest = interp1d(*duration, thresh_x_, thresh_y_);
 
     // Compute the MES detection efficiency.
-    mes = completeness_model_.get_mes(period, *depth, sigma, timefactor_);
-    pdet = completeness_model_.get_pdet(period, mes, mest);
+    mes = completeness_model_->get_mes(period, *depth, sigma, timefactor_);
+    pdet = completeness_model_->get_pdet(period, mes, mest);
 
     // Get the window function.
-    pwin = completeness_model_.get_pwin(period, dataspan_, dutycycle_);
+    pwin = completeness_model_->get_pwin(period, dataspan_, dutycycle_);
 
     return pdet * pwin;
   };
@@ -191,7 +192,7 @@ public:
 private:
   double mass_, radius_, dataspan_, dutycycle_, timefactor_;
   std::vector<double> cdpp_x_, cdpp_y_, thresh_x_, thresh_y_;
-  const CompType completeness_model_;
+  const CompType* completeness_model_;
 
   double interp1d (double x0, const std::vector<double>& x, const std::vector<double>& y) const {
     unsigned n = x.size();

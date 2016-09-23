@@ -23,9 +23,40 @@ cdef extern from "boost/random.hpp" namespace "boost::random":
         pass
 
 
-cdef extern from "exoabc/simulation.h" namespace "exoabc":
+cdef extern from "exoabc/exoabc.h" namespace "exoabc":
 
     ctypedef mt19937 random_state_t
+
+    # Distributions
+    cdef cppclass Distribution:
+        pass
+
+    # Observation model
+    cdef cppclass BaseStar:
+        pass
+
+    cdef cppclass Star[T]:
+        Star (
+            const T completeness_model,
+            double mass, double radius,
+            double dataspan, double dutycycle,
+            unsigned n_cdpp, const double* cdpp_x, const double* cdpp_y,
+            unsigned n_thresh, const double* thresh_x, const double* thresh_y
+        )
+
+    # Simulation
+    cdef cppclass CompletenessModel:
+        pass
+
+    cdef cppclass Q1_Q16_CompletenessModel:
+        pass
+
+    cdef cppclass Q1_Q17_CompletenessModel:
+        Q1_Q17_CompletenessModel (
+            double qmax_m, double qmax_b,
+            double mes0_m, double mes0_b,
+            double lnw_m, double lnw_b
+        )
 
     cdef cppclass CatalogRow:
         unsigned starid
@@ -34,13 +65,13 @@ cdef extern from "exoabc/simulation.h" namespace "exoabc":
         double duration
         double depth
 
-    cdef cppclass Simulation[Period, Radius, Eccen, Width, Multi]:
+    cdef cppclass Simulation:
         Simulation (
-            Period period_distribution,
-            Radius radius_distribution,
-            Eccen  eccen_distribution,
-            Width  width_distribution,
-            Multi  multi_distribution
+            Distribution* period_distribution,
+            Distribution* radius_distribution,
+            Distribution* eccen_distribution,
+            Distribution* width_distribution,
+            Distribution* multi_distribution
         )
 
     #     void clean_up ()
@@ -71,13 +102,13 @@ cdef extern from "exoabc/simulation.h" namespace "exoabc":
     #     )
 
 
-# cdef class Simulator:
-    # """
-    # This class provides functionality for simulating a population of exoplanets
-    # around a set of Kepler targets. This uses the Burke et al. (2015)
-    # semi-analytic completeness model.
+cdef class Simulator:
+    """
+    This class provides functionality for simulating a population of exoplanets
+    around a set of Kepler targets. This uses the Burke et al. (2015)
+    semi-analytic completeness model.
 
-    # """
+    """
 
     # cdef unsigned nplanets
     # cdef unsigned cached
@@ -85,7 +116,28 @@ cdef extern from "exoabc/simulation.h" namespace "exoabc":
     # cdef object radius_range
     # cdef Simulation* simulator
     # cdef Simulation* cached_simulator
-    # cdef CompletenessModel* completeness_model
+    cdef CompletenessModel* completeness_model
+
+    def __cinit__(self, stars, release=None, completeness_params=None):
+        # Figure out which completeness model to use
+        if release is None:
+            release = "q1_q16"
+        if release == "q1_q16":
+            self.completeness_model = new Q1_Q16_CompletenessModel()
+        elif release == "q1_q17":
+            completeness_params = np.atleast_1d(completeness_params)
+            if not completeness_params.shape == (6, ):
+                raise ValueError("completeness parameters dimension mismatch")
+            self.completeness_model = new Q1_Q17_CompletenessModel(
+                *(completeness_params)
+            )
+        else:
+            raise ValueError("unrecognized release: '{0}'".format(release))
+
+        # Set up the simulation distributions
+
+    def __dealloc__(self):
+        del self.completeness_model
 
     # def __cinit__(self, stars, unsigned nplanets,
     #               double min_radius, double max_radius,
