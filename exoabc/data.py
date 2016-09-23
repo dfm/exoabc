@@ -1,8 +1,5 @@
 # -*- coding: utf-8 -*-
 
-__all__ = ["get_catalog", "get_burke_gk", "get_candidates",
-           "compute_multiplicity", "calibrate_completeness"]
-
 import os
 import requests
 import numpy as np
@@ -11,8 +8,11 @@ from io import BytesIO  # Python 3 only!
 import matplotlib.pyplot as pl
 from scipy.optimize import leastsq
 
+__all__ = ["get_catalog", "get_burke_gk", "get_candidates",
+           "compute_multiplicity", "calibrate_completeness"]
 
-def get_catalog(name, basepath="data"):
+
+def get_catalog(name, prefix="q1_q16", basepath="data"):
     """
     Download a catalog from the Exoplanet Archive by name and save it as a
     Pandas HDF5 file.
@@ -22,14 +22,16 @@ def get_catalog(name, basepath="data"):
                      (default: ``data`` in the current working directory)
 
     """
+    basepath = os.path.join(basepath, prefix)
     fn = os.path.join(basepath, "{0}.h5".format(name))
     if os.path.exists(fn):
         return pd.read_hdf(fn, name)
     if not os.path.exists(basepath):
         os.makedirs(basepath)
-    print("Downloading {0}...".format(name))
+    fullname = prefix+"_"+name
+    print("Downloading {0}...".format(fullname))
     url = ("http://exoplanetarchive.ipac.caltech.edu/cgi-bin/nstedAPI/"
-           "nph-nstedAPI?table={0}&select=*").format(name)
+           "nph-nstedAPI?table={0}&select=*").format(fullname)
     r = requests.get(url)
     if r.status_code != requests.codes.ok:
         r.raise_for_status()
@@ -46,8 +48,7 @@ def get_burke_gk(**kwargs):
     tables on the Exoplanet Archive.
 
     """
-    stlr = get_catalog("q1_q16_stellar", **kwargs)
-    # stlr = get_catalog("q1_q17_dr24_stellar", **kwargs)
+    stlr = get_catalog("stellar", **kwargs)
 
     # Select G & K dwarfs.
     m = (4200 <= stlr.teff) & (stlr.teff <= 6100)
@@ -70,8 +71,7 @@ def get_ballard_m(**kwargs):
     ``stellar`` tables on the Exoplanet Archive.
 
     """
-    stlr = get_catalog("q1_q16_stellar", **kwargs)
-    # stlr = get_catalog("q1_q17_dr24_stellar", **kwargs)
+    stlr = get_catalog("stellar", **kwargs)
 
     # Select M dwarfs.
     m = (3950 <= stlr.teff) & (stlr.teff <= 4200)
@@ -97,8 +97,7 @@ def get_candidates(stlr=None, mesthresh=None, period_range=None,
     :param radius_range: restrict to a range of radii
 
     """
-    kois = get_catalog("q1_q16_koi", **kwargs)
-    # kois = get_catalog("q1_q17_dr24_koi", **kwargs)
+    kois = get_catalog("koi", **kwargs)
 
     # Join on the stellar list.
     if stlr is not None:

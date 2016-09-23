@@ -8,6 +8,7 @@ except NameError:
     __EXOABC_SETUP__ = False
 
 if not __EXOABC_SETUP__:
-    pass
-    # __all__ = ["Simulator"]
-    # from .model import Simulator
+    __all__ = ["Simulator", "data"]
+
+    from . import data
+    from .sim import Simulator

@@ -135,7 +135,7 @@ cdef class Simulator:
             release = "q1_q16"
         if release == "q1_q16":
             self.completeness_model = new Q1_Q16_CompletenessModel()
-        elif release == "q1_q17":
+        elif release == "q1_q17_dr24":
             completeness_params = np.atleast_1d(completeness_params)
             if not completeness_params.shape == (6, ):
                 raise ValueError("completeness parameters dimension mismatch")
@@ -230,12 +230,12 @@ cdef class Simulator:
 
         # Convert the simulation to a numpy array
         result = np.empty(catalog.size(), dtype=[
-            ("kicid", int), ("koi_period", float), ("koi_prad", float),
+            ("kepid", int), ("koi_period", float), ("koi_prad", float),
             ("koi_duration", float), ("koi_depth", float)
         ])
         cdef int i
         for i in range(catalog.size()):
-            result["kicid"][i] = catalog[i].starid
+            result["kepid"][i] = catalog[i].starid
             result["koi_period"][i] = catalog[i].period
             result["koi_prad"][i] = catalog[i].radius
             result["koi_duration"][i] = catalog[i].duration
