@@ -23,7 +23,7 @@ public:
 
   virtual double get_mes (double period, double depth, double sigma, double total_time) const {
     double snr = depth / sigma,
-            ntrn = total_time / period;
+           ntrn = total_time / period;
     return snr * sqrt(ntrn);
   };
 
@@ -69,25 +69,25 @@ private:
 //
 class Q1_Q17_CompletenessModel : public CompletenessModel {
 public:
-    Q1_Q17_CompletenessModel (
-        double qmax_m, double qmax_b,
-        double mes0_m, double mes0_b,
-        double lnw_m, double lnw_b
-    ) : qmax_m_(qmax_m), qmax_b_(qmax_b), mes0_m_(mes0_m), mes0_b_(mes0_b),
-        lnw_m_(lnw_m), lnw_b_(lnw_b) {};
+  Q1_Q17_CompletenessModel (
+    double qmax_m, double qmax_b,
+    double mes0_m, double mes0_b,
+    double lnw_m, double lnw_b
+  ) : qmax_m_(qmax_m), qmax_b_(qmax_b), mes0_m_(mes0_m), mes0_b_(mes0_b),
+      lnw_m_(lnw_m), lnw_b_(lnw_b) {};
 
-    double get_pdet (double period, double mes, double mest) const {
-        double qmax = qmax_m_ * period + qmax_b_,
-               mes0 = mes0_m_ * period + mes0_b_,
-               invw = exp(-lnw_m_ * period - lnw_b_);
-        double y = qmax / (1.0 + exp(-(mes - mes0) * invw));
-        if (y < 0.0) return 0.0;
-        if (y > 1.0) return 1.0;
-        return y;
-    };
+  double get_pdet (double period, double mes, double mest) const {
+    double qmax = qmax_m_ * period + qmax_b_,
+            mes0 = mes0_m_ * period + mes0_b_,
+            invw = exp(-lnw_m_ * period - lnw_b_);
+    double y = qmax / (1.0 + exp(-(mes - mes0) * invw));
+    if (y < 0.0) return 0.0;
+    if (y > 1.0) return 1.0;
+    return y;
+  };
 
 private:
-    double qmax_m_, qmax_b_, mes0_m_, mes0_b_, lnw_m_, lnw_b_;
+  double qmax_m_, qmax_b_, mes0_m_, mes0_b_, lnw_m_, lnw_b_;
 };
 
 

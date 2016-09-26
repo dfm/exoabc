@@ -2,8 +2,6 @@
 #define _EXOABC_SIMULATION_H_
 
 #include <vector>
-#include <string>
-#include <sstream>
 
 #include "exoabc/distributions.h"
 #include "exoabc/observation_model.h"
@@ -49,6 +47,13 @@ public:
     for (size_t i = 0; i < stars_.size(); ++i) delete stars_[i];
   };
 
+  void set_period_distribution (Distribution* d) {
+    remove_parameters(period_distribution_->parameters());
+    delete period_distribution_;
+    period_distribution_ = d;
+    add_parameters(period_distribution_->parameters());
+  };
+
   void add_star (const BaseStar* star) {
     stars_.push_back(star);
   };
@@ -61,6 +66,15 @@ public:
   void add_parameters (std::vector<BaseParameter*> parameters) {
     for (size_t i = 0; i < parameters.size(); ++i)
       parameters_.push_back(parameters[i]);
+  };
+
+  void remove_parameter (BaseParameter* parameter) {
+    // http://stackoverflow.com/questions/39912/how-do-i-remove-an-item-from-a-stl-vector-with-a-certain-value
+    parameters_.erase(std::remove(parameters_.begin(), parameters_.end(), parameter), parameters_.end());
+  };
+
+  void remove_parameters (std::vector<BaseParameter*> parameters) {
+    for (size_t i = 0; i < parameters.size(); ++i) remove_parameter(parameters[i]);
   };
 
   size_t size () {

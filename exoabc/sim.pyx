@@ -9,6 +9,12 @@ from libcpp.string cimport string
 import time
 import numpy as np
 cimport numpy as np
+import pandas as pd
+
+try:
+    from tqdm import tqdm
+except ImportError:
+    tqdm = lambda f, *args, **kwargs: f
 
 DTYPE = np.float64
 ctypedef np.float64_t DTYPE_t
@@ -41,9 +47,9 @@ cdef extern from "exoabc/exoabc.h" namespace "exoabc":
         Delta(double)
     cdef cppclass Parameter(BaseParameter):
         Parameter(double)
-        Parameter(Distribution*)
-        Parameter(Distribution*, random_state_t)
-        Parameter(Distribution*, double)
+        Parameter(string, Distribution*)
+        Parameter(string, Distribution*, random_state_t)
+        Parameter(string, Distribution*, double)
     cdef cppclass PowerLaw(Distribution):
         PowerLaw(double, double, BaseParameter*)
     cdef cppclass Normal(Distribution):
@@ -118,8 +124,8 @@ cdef class Simulator:
                   double log_sigma, log_multi_params,
                   double min_period_slope=-4.0, double max_period_slope=3.0,
                   double min_radius_slope=-4.0, double max_radius_slope=3.0,
-                  double min_log_sigma=-10.0, double max_log_sigma=1.0,
-                  double min_log_multi=-5.0, double max_log_multi=2.0,
+                  double min_log_sigma=-5.0, double max_log_sigma=1.0,
+                  double min_log_multi=-8.0, double max_log_multi=8.0,
                   eccen_params=(0.867, 3.03),
                   seed=None, release=None, completeness_params=None):
         # Set up the random state
@@ -148,27 +154,35 @@ cdef class Simulator:
             raise ValueError("unrecognized release: '{0}'".format(release))
 
         # Set up the simulation distributions
+        cdef string name = b"period_slope"
         cdef PowerLaw* period = new PowerLaw(
             min_period, max_period,
-            new Parameter(new Uniform(min_period_slope, max_period_slope),
+            new Parameter(name,
+                          new Uniform(min_period_slope, max_period_slope),
                           period_slope)
         )
+        name = b"radius_slope"
         cdef PowerLaw* radius = new PowerLaw(
             min_radius, max_radius,
-            new Parameter(new Uniform(min_radius_slope, max_radius_slope),
+            new Parameter(name,
+                          new Uniform(min_radius_slope, max_radius_slope),
                           radius_slope)
         )
         cdef Beta* eccen = new Beta(new Parameter(log(eccen_params[0])),
                                     new Parameter(log(eccen_params[1])))
+        name = b"log_width"
         cdef Rayleigh* width = new Rayleigh(
-            new Parameter(new Uniform(min_log_sigma, max_log_sigma), log_sigma)
+            new Parameter(name,
+                          new Uniform(min_log_sigma, max_log_sigma), log_sigma)
         )
         cdef np.ndarray[DTYPE_t, ndim=1] lmp = np.atleast_1d(log_multi_params)
         cdef Multinomial* multi = new Multinomial(new Parameter(0.0))
         cdef Parameter* par
+        cdef int i
         cdef double v
-        for v in log_multi_params:
-            par = new Parameter(new Uniform(min_log_multi, max_log_multi), v)
+        for i, v in enumerate(log_multi_params):
+            name = b"log_rate_{0}".format(i+1)
+            par = new Parameter(name, new Uniform(min_log_multi, max_log_multi), v)
             multi.add_bin(par)
 
         # Build the simulator
@@ -182,25 +196,27 @@ cdef class Simulator:
         cdef np.ndarray[DTYPE_t, ndim=1] thr_y
 
         # Which columns have the cdpp
-        cdpp_cols = [k for k in stars.keys() if k.startswith("rrmscdpp")]
+        cdpp_cols = np.array([k for k in stars.keys()
+                              if k.startswith("rrmscdpp")])
         cdpp_x = np.array([k[-4:].replace("p", ".") for k in cdpp_cols], dtype=float)
-        inds = np.argsort(cdpp_x)
+        cdpp_inds = np.argsort(cdpp_x)
+        cdpp_x = np.ascontiguousarray(cdpp_x[cdpp_inds], dtype=np.float64)
+        cdpp_cols = cdpp_cols[cdpp_inds]
 
         # And the thresholds
-        thr_cols = [k for k in stars.keys() if k.startswith("mesthres")]
+        thr_cols = np.array([k for k in stars.keys()
+                             if k.startswith("mesthres")])
         thr_x = np.array([k[-4:].replace("p", ".") for k in thr_cols], dtype=float)
-        inds = np.argsort(thr_x)
+        thr_inds = np.argsort(thr_x)
+        thr_x = np.ascontiguousarray(thr_x[thr_inds], dtype=np.float64)
+        thr_cols = thr_cols[thr_inds]
 
-        for _, star in stars.iterrows():
+        for _, star in tqdm(stars.iterrows(), total=len(stars)):
             # Pull out the CDPP values.
-            cdpp_x = np.ascontiguousarray(cdpp_x[inds], dtype=np.float64)
-            cdpp_y = np.ascontiguousarray(star[cdpp_cols][inds],
-                                          dtype=np.float64)
+            cdpp_y = np.ascontiguousarray(star[cdpp_cols], dtype=np.float64)
 
             # And the MES thresholds.
-            thr_x = np.ascontiguousarray(thr_x[inds], dtype=np.float64)
-            thr_y = np.ascontiguousarray(star[thr_cols][inds],
-                                         dtype=np.float64)
+            thr_y = np.ascontiguousarray(star[thr_cols], dtype=np.float64)
 
             # Put the star together
             starobj = new Star(
@@ -214,6 +230,14 @@ cdef class Simulator:
     def __dealloc__(self):
         del self.simulation
         del self.completeness_model
+
+    property state:
+        def __get__(self):
+            return serialize_state(self.state)
+
+        def __set__(self, value):
+            cdef string blob = value
+            self.state = deserialize_state(blob)
 
     def sample_parameters(self):
         # Run the simulation
@@ -240,7 +264,7 @@ cdef class Simulator:
             result["koi_prad"][i] = catalog[i].radius
             result["koi_duration"][i] = catalog[i].duration
             result["koi_depth"][i] = catalog[i].depth
-        return result
+        return pd.DataFrame.from_records(result)
 
     def get_parameters(self):
         cdef np.ndarray[DTYPE_t, ndim=1] params = np.empty(self.simulation.size())
@@ -255,11 +279,3 @@ cdef class Simulator:
 
     def log_pdf(self):
         return self.simulation.log_pdf()
-
-    property state:
-        def __get__(self):
-            return serialize_state(self.state)
-
-        def __set__(self, value):
-            cdef string blob = value
-            self.state = deserialize_state(blob)

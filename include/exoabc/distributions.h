@@ -29,10 +29,11 @@ random_state_t deserialize_state (const std::string& blob) {
 class BaseParameter {
 public:
   virtual ~BaseParameter () {};
+  virtual std::string name() const = 0;
+  virtual bool is_frozen () const = 0;
   virtual double value () const = 0;
   virtual double value (double value) = 0;
   virtual double sample (random_state_t& state) = 0;
-  virtual bool is_frozen () const = 0;
   virtual double log_pdf () const = 0;
 };
 
@@ -94,13 +95,15 @@ private:
 class Parameter : public BaseParameter {
 public:
   Parameter (double value)
-    : prior_(new Delta(value)), frozen_(true), value_(value) {};
-  Parameter (Distribution* prior)
-    : prior_(prior), frozen_(false) {};
-  Parameter (Distribution* prior, random_state_t& state)
-    : prior_(prior), frozen_(false), value_(prior->sample(state)) {};
-  Parameter (Distribution* prior, double value, bool frozen = false)
-    : prior_(prior), frozen_(frozen), value_(value) {};
+    : prior_(new Delta(value)), frozen_(true), value_(value), name_("delta") {};
+  Parameter (std::string name, double value)
+    : prior_(new Delta(value)), frozen_(true), value_(value), name_(name) {};
+  Parameter (std::string name, Distribution* prior)
+    : prior_(prior), frozen_(false), name_(name) {};
+  Parameter (std::string name, Distribution* prior, random_state_t& state)
+    : prior_(prior), frozen_(false), value_(prior->sample(state)), name_(name) {};
+  Parameter (std::string name, Distribution* prior, double value, bool frozen = false)
+    : prior_(prior), frozen_(frozen), value_(value), name_(name) {};
 
   ~Parameter () {
     delete prior_;
@@ -109,7 +112,7 @@ public:
   void freeze () { frozen_ = true; };
   void thaw () { frozen_ = false; };
   bool is_frozen () const { return frozen_; };
-
+  std::string name () const { return name_; };
   double value () const { return value_; };
   double value (double value) {
     value_ = value;
@@ -125,6 +128,7 @@ private:
   Distribution* prior_;
   bool frozen_;
   double value_;
+  std::string name_;
 };
 
 class PowerLaw : public Distribution {
@@ -208,6 +212,11 @@ public:
   };
 };
 
+double logsumexp (double a, double b) {
+  if (a >= b) return a + log(1.0 + exp(b - a));
+  return b + log(1.0 + exp(a - b));
+}
+
 class Multinomial : public Distribution {
 public:
   Multinomial (BaseParameter* parameter) {
@@ -218,11 +227,11 @@ public:
   };
   double scale_random (double u) const {
     size_t n = this->parameters_.size();
-    double norm = 0.0, value = 0.0;
-    for (size_t i = 0; i < n; ++i) norm += exp(this->parameters_[i]->value());
+    double logu = log(u), norm = 0.0, value = 0.0;
+    for (size_t i = 0; i < n; ++i) norm = logsumexp(norm, this->parameters_[i]->value());
     for (size_t i = 0; i < n-1; ++i) {
-      value += exp(this->parameters_[i]->value());
-      if (value / norm > u) return 1.0 * i;
+      value = logsumexp(value, this->parameters_[i]->value());
+      if (value - norm > logu) return 1.0 * i;
     }
     return n-1.0;
   };
