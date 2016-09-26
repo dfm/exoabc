@@ -1,0 +1,11 @@
+*.aux
+*.log
+*.out
+ms.pdf
+*.bbl
+*.blg
+figures/data
+msNotes.bib
+vc.tex
+*.ent
+fore*
