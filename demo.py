@@ -5,6 +5,7 @@ from __future__ import division, print_function
 
 import os
 import time
+from math import factorial
 from functools import partial
 from collections import Counter
 
@@ -27,7 +28,7 @@ depth_range = (0, 1000)
 maxn = 3
 
 prefix = "q1_q16"
-stlr = data.get_burke_gk(prefix=prefix)
+stlr = data.get_burke_gk(prefix=prefix).iloc[:5000]
 kois = data.get_candidates(stlr=stlr, prefix=prefix)
 
 sim = Simulator(
@@ -213,16 +214,18 @@ with MPIPool() as pool:
         n /= np.sum(n, axis=1)[:, None]
         q = np.percentile(n, [16, 50, 84], axis=0)
         ax = axes[1, 2]
-        ax.fill_between(np.arange(maxn+1), q[0], q[2], color="k", alpha=0.1)
-        ax.plot(np.arange(maxn+1), q[1], color="k", lw=2)
+        x = np.arange(maxn+1)
+        ax.fill_between(x, q[0], q[2], color="k", alpha=0.1)
+        ax.plot(x, q[1], color="k", lw=2)
+        lam = np.exp(-0.25089448)
+        ax.plot(x, lam**x * np.exp(-lam) / np.array(list(map(factorial, x))),
+                color="g", lw=2)
         ax.set_xlim(0, maxn)
 
         axes[1, 2].set_yscale("log")
         axes[1, 0].set_xlabel("period")
         axes[1, 1].set_xlabel("radius")
         axes[1, 2].set_xlabel("multiplicity")
-        axes[1, 0].set_yticklabels([])
-        axes[1, 1].set_yticklabels([])
         axes[1, 0].set_ylabel("underlying distributions")
 
         fig.tight_layout()
