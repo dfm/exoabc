@@ -9,7 +9,7 @@
 namespace exoabc {
 
 struct CatalogRow {
-    unsigned starid;
+    long unsigned starid;
     double period;
     double radius;
     double duration;

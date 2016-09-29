@@ -23,7 +23,7 @@ __all__ = []
 period_range = (50, 300)
 prad_range = (0.75, 2.5)
 depth_range = (0, 1000)
-maxn = 2
+maxn = 3
 
 prefix = "q1_q16"
 stlr = data.get_burke_gk(prefix=prefix)
@@ -34,6 +34,7 @@ sim = Simulator(
     period_range[0], period_range[1], 0.0,
     prad_range[0], prad_range[1], -2.0,
     -3.0, np.zeros(maxn),
+    min_log_multi=-10.0, max_log_multi=20.0,
     release=prefix,
     seed=int(os.getpid() + 1000*time.time()) % 20000,
 )
@@ -49,9 +50,10 @@ def compute_stats(catalog):
 
     # Multiplicity
     h = Counter(Counter(c.kepid).values())
-    hist = np.zeros(maxn, dtype=int)
-    for i in range(maxn):
-        hist[i] = h.get(i + 1, 0)
+    hist = np.zeros(maxn+1, dtype=int)
+    for i in range(1, maxn+1):
+        hist[i] = h.get(i, 0)
+    hist[0] = len(stlr) - np.sum(hist[1:])
 
     return (
         hist, np.array(c.koi_period), np.array(c.koi_depth),
@@ -60,8 +62,7 @@ def compute_stats(catalog):
 obs_stats = compute_stats(kois)
 
 def compute_distance(ds1, ds2):
-    norm = max(np.max(ds1[0]), np.max(ds2[0]))
-    multi_dist = np.sum((ds1[0] - ds2[0])**2.0) / norm**2
+    multi_dist = np.sum((np.log(ds1[0]+1) - np.log(ds2[0]+1))**2.0)
     period_dist = ks_2samp(ds1[1], ds2[1]).statistic
     depth_dist = ks_2samp(ds1[2], ds2[2]).statistic
     return multi_dist + period_dist + depth_dist

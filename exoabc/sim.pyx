@@ -83,7 +83,7 @@ cdef extern from "exoabc/exoabc.h" namespace "exoabc":
 
     # Simulation
     cdef cppclass CatalogRow:
-        unsigned starid
+        long unsigned starid
         double period
         double radius
         double duration

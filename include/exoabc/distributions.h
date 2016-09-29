@@ -227,11 +227,11 @@ public:
   };
   double scale_random (double u) const {
     size_t n = this->parameters_.size();
-    double logu = log(u), norm = 0.0, value = 0.0;
-    for (size_t i = 0; i < n; ++i) norm = logsumexp(norm, this->parameters_[i]->value());
-    for (size_t i = 0; i < n-1; ++i) {
+    double logu = log(u), norm = this->parameters_[0]->value(), value = norm;
+    for (size_t i = 1; i < n; ++i) norm = logsumexp(norm, this->parameters_[i]->value());
+    for (size_t i = 1; i < n; ++i) {
+      if (value - norm > logu) return i - 1.0;
       value = logsumexp(value, this->parameters_[i]->value());
-      if (value - norm > logu) return 1.0 * i;
     }
     return n-1.0;
   };
