@@ -10,15 +10,16 @@ from collections import Counter
 
 import h5py
 import numpy as np
+import matplotlib.pyplot as plt
 from scipy.stats import ks_2samp
 
 import tqdm
+import corner
 from schwimmbad import MPIPool
 
 from exoabc import Simulator, data
 
 __all__ = []
-
 
 period_range = (50, 300)
 prad_range = (0.75, 2.5)
@@ -34,7 +35,8 @@ sim = Simulator(
     period_range[0], period_range[1], 0.0,
     prad_range[0], prad_range[1], -2.0,
     -3.0, np.zeros(maxn),
-    min_log_multi=-10.0, max_log_multi=20.0,
+    min_log_sigma=-5.0, max_log_sigma=5.0,
+    min_log_multi=-5.0, max_log_multi=2.0,
     release=prefix,
     seed=int(os.getpid() + 1000*time.time()) % 20000,
 )
@@ -62,7 +64,7 @@ def compute_stats(catalog):
 obs_stats = compute_stats(kois)
 
 def compute_distance(ds1, ds2):
-    multi_dist = np.sum((np.log(ds1[0]+1) - np.log(ds2[0]+1))**2.0)
+    multi_dist = np.mean((np.log(ds1[0]+1) - np.log(ds2[0]+1))**2.0)
     period_dist = ks_2samp(ds1[1], ds2[1]).statistic
     depth_dist = ks_2samp(ds1[2], ds2[2]).statistic
     return multi_dist + period_dist + depth_dist
@@ -111,7 +113,7 @@ def parse_samples(samples):
     log_w = np.array([s[3] for s in samples])[m]
     return rho, params, states, np.exp(log_w - np.logaddexp.reduce(log_w))
 
-def update_target_density(rho, params, weights, percentile=25.0):
+def update_target_density(rho, params, weights, percentile=30.0):
     norm = np.sum(weights)
     mu = np.sum(params * weights[:, None], axis=0) / norm
     tau = np.sqrt(2 * np.sum((params-mu)**2*weights[:, None], axis=0) / norm)
@@ -121,23 +123,109 @@ def update_target_density(rho, params, weights, percentile=25.0):
 with MPIPool() as pool:
     pool.wait()
 
+    from cycler import cycler
+    from matplotlib import rcParams
+
+    rcParams["font.size"] = 16
+    rcParams["font.family"] = "sans-serif"
+    rcParams["font.sans-serif"] = ["Computer Modern Sans"]
+    rcParams["text.usetex"] = True
+    rcParams["text.latex.preamble"] = r"\usepackage{cmbright}"
+    rcParams["axes.prop_cycle"] = cycler("color", (
+        "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b",
+        "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
+    ))  # d3.js color cycle
+
     # Run step 1 of PMC method.
-    N = 1000
+    N = 1500
     rhos, thetas, states = parse_samples(list(pool.map(
         sample, tqdm.tqdm((None for N in range(N)), total=N))))
     weights = np.ones(len(rhos)) / len(rhos)
 
     os.makedirs("results", exist_ok=True)
+    stlr.to_hdf(os.path.join("results", "stlr.h5"), "stlr", format="t")
+    kois.to_hdf(os.path.join("results", "kois.h5"), "kois", format="t")
     for it in range(10):
         eps, tau = update_target_density(rhos, thetas, weights)
         func = partial(pmc_sample_one, eps, tau, thetas, weights)
         rhos, thetas, states, weights = parse_samples(list(pool.map(
             func, tqdm.tqdm((None for N in range(N)), total=N))))
 
-        with h5py.File("results/{0:03d}.h5".format(it), "w") as f:
+        with h5py.File(os.path.join("results", "{0:03d}.h5".format(it)),
+                       "w") as f:
             f.attrs["iteration"] = it
             f.attrs["eps"] = eps
             f.attrs["tau"] = tau
+            for i in range(len(obs_stats)):
+                f.attrs["obs_stats_{0}".format(i)] = obs_stats[i]
             f.create_dataset("rho", data=rhos)
             f.create_dataset("theta", data=thetas)
             f.create_dataset("weight", data=weights)
+            f.create_dataset("state", data=states)
+
+        fig = corner.corner(thetas, weights=weights)
+        fig.savefig(os.path.join("results", "corner-{0:03d}.png".format(it)))
+        plt.close(fig)
+
+        fig, axes = plt.subplots(2, 3, figsize=(14, 8))
+
+        # Observed distributions
+        for i in np.random.choice(len(weights), p=weights, size=100):
+            p = thetas[i]
+            sim.set_parameters(p)
+            sim.state = states[i]
+            pop = sim.sample_population()
+            sim_stats = compute_stats(pop)
+
+            axes[0, 0].hist(sim_stats[1], range=period_range, histtype="step",
+                            color="k", alpha=0.2)
+            axes[0, 1].hist(sim_stats[2], range=depth_range, histtype="step",
+                            color="k", alpha=0.2)
+            axes[0, 2].plot(sim_stats[0], color="k", alpha=0.2)
+
+        axes[0, 0].hist(obs_stats[1], range=period_range, histtype="step",
+                        color="g", lw=2)
+        axes[0, 1].hist(obs_stats[2], range=depth_range, histtype="step",
+                        color="g", lw=2)
+        axes[0, 2].plot(obs_stats[0], color="g", lw=2)
+        axes[0, 2].set_yscale("log")
+        axes[0, 0].set_xlabel("period")
+        axes[0, 1].set_xlabel("depth")
+        axes[0, 2].set_xlabel("multiplicity")
+        axes[0, 0].set_yticklabels([])
+        axes[0, 1].set_yticklabels([])
+        axes[0, 0].set_ylabel("observed distributions")
+
+        # True distributions
+        for n, rng, ax in zip(thetas[:, :2].T, (period_range, prad_range),
+                              axes[1, :2]):
+            x = np.linspace(rng[0], rng[1], 5000)
+            norm = (n + 1) / (rng[1]**(n+1) - rng[0]**(n+1))
+            d = x[:, None]**n[None, :] * norm[None, :]
+            q = np.percentile(d, [16, 50, 84], axis=1)
+            ax.fill_between(x, q[0], q[2], color="k", alpha=0.1)
+            ax.plot(x, q[1], color="k", lw=2)
+            ax.set_xlim(*rng)
+
+        n = np.concatenate((np.ones((len(thetas), 1)),
+                            np.exp(thetas[:, -maxn:])),
+                           axis=1)
+        n /= np.sum(n, axis=1)[:, None]
+        q = np.percentile(n, [16, 50, 84], axis=0)
+        ax = axes[1, 2]
+        ax.fill_between(np.arange(maxn+1), q[0], q[2], color="k", alpha=0.1)
+        ax.plot(np.arange(maxn+1), q[1], color="k", lw=2)
+        ax.set_xlim(0, maxn)
+
+        axes[1, 2].set_yscale("log")
+        axes[1, 0].set_xlabel("period")
+        axes[1, 1].set_xlabel("radius")
+        axes[1, 2].set_xlabel("multiplicity")
+        axes[1, 0].set_yticklabels([])
+        axes[1, 1].set_yticklabels([])
+        axes[1, 0].set_ylabel("underlying distributions")
+
+        fig.tight_layout()
+        fig.savefig(os.path.join("results", "params-{0:03d}.png".format(it)),
+                    bbox_inches="tight")
+        plt.close(fig)
