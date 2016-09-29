@@ -126,6 +126,7 @@ with MPIPool() as pool:
         sample, tqdm.tqdm((None for N in range(N)), total=N))))
     weights = np.ones(len(rhos)) / len(rhos)
 
+    os.makedirs("results", exist_ok=True)
     for it in range(10):
         eps, tau = update_target_density(rhos, thetas, weights)
         func = partial(pmc_sample_one, eps, tau, thetas, weights)
