@@ -181,7 +181,7 @@ cdef class Simulator:
         cdef int i
         cdef double v
         for i, v in enumerate(log_multi_params):
-            name = b"log_rate_{0}".format(i+1)
+            name = "log_rate_{0}".format(i+1).encode("ascii")
             par = new Parameter(name, new Uniform(min_log_multi, max_log_multi), v)
             multi.add_bin(par)
 
