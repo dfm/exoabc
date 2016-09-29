@@ -28,7 +28,7 @@ depth_range = (0, 1000)
 maxn = 3
 
 prefix = "q1_q16"
-stlr = data.get_burke_gk(prefix=prefix).iloc[:5000]
+stlr = data.get_burke_gk(prefix=prefix)
 kois = data.get_candidates(stlr=stlr, prefix=prefix)
 
 sim = Simulator(
