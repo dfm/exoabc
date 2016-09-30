@@ -76,7 +76,8 @@ cdef extern from "exoabc/exoabc.h" namespace "exoabc":
     cdef cppclass Star:
         Star (
             const CompletenessModel* completeness_model,
-            double mass, double radius, double dataspan, double dutycycle,
+            double ln_mass, double sig_ln_mass, double ln_radius, double sig_ln_radius,
+            double dataspan, double dutycycle,
             unsigned n_cdpp, const double* cdpp_x, const double* cdpp_y,
             unsigned n_thresh, const double* thresh_x, const double* thresh_y
         )
@@ -211,6 +212,7 @@ cdef class Simulator:
         thr_x = np.ascontiguousarray(thr_x[thr_inds], dtype=np.float64)
         thr_cols = thr_cols[thr_inds]
 
+        cdef double mn, mx, sig_m, sig_r
         for _, star in tqdm(stars.iterrows(), total=len(stars)):
             # Pull out the CDPP values.
             cdpp_y = np.ascontiguousarray(star[cdpp_cols], dtype=np.float64)
@@ -218,10 +220,19 @@ cdef class Simulator:
             # And the MES thresholds.
             thr_y = np.ascontiguousarray(star[thr_cols], dtype=np.float64)
 
+            # Work out uncertainties.
+            mx = log(star.mass + star.mass_err1)
+            mn = log(star.mass + star.mass_err2)
+            sig_m = 0.5 * (mx - mn)
+            mx = log(star.radius + star.radius_err1)
+            mn = log(star.radius + star.radius_err2)
+            sig_r = 0.5 * (mx - mn)
+
             # Put the star together
             starobj = new Star(
                 self.completeness_model,
-                star.mass, star.radius, star.dataspan, star.dutycycle,
+                log(star.mass), sig_m, log(star.radius), sig_m,
+                star.dataspan, star.dutycycle,
                 cdpp_x.shape[0], <double*>cdpp_x.data, <double*>cdpp_y.data,
                 thr_x.shape[0], <double*>thr_x.data, <double*>thr_y.data,
             )

@@ -94,6 +94,8 @@ public:
     for (size_t i = 0; i < stars_.size(); ++i) {
       // Get the star
       const BaseStar* star = stars_[i];
+      double stlr_mass = star->sample_mass(state);
+      double stlr_radius = star->sample_radius(state);
 
       // Sample a number of planets
       size_t N = size_t(multi_distribution_->sample(state));
@@ -117,7 +119,8 @@ public:
 
         // Detection probability
         double duration, depth;
-        double pdet = star->get_completeness(q1, q2, period, radius, incl, eccen, omega,
+        double pdet = star->get_completeness(stlr_mass, stlr_radius, q1, q2,
+                                             period, radius, incl, eccen, omega,
                                              &duration, &depth);
 
         // Is the planet detected?

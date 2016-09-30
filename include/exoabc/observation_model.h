@@ -7,6 +7,7 @@
 #include <boost/math/distributions/gamma.hpp>
 
 #include "exoabc/transit/quad.h"
+#include "exoabc/distributions.h"
 
 namespace exoabc {
 
@@ -94,9 +95,12 @@ private:
 class BaseStar {
 public:
   virtual ~BaseStar () {};
-  virtual double get_completeness (double q1, double q2, double period, double rp,
+  virtual double get_completeness (double mass, double radius, double q1, double q2,
+                                   double period, double rp,
                                    double incl, double e, double omega,
                                    double* duration, double* depth) const = 0;
+  virtual double sample_mass (random_state_t& state) const = 0;
+  virtual double sample_radius (random_state_t& state) const = 0;
 };
 
 
@@ -104,13 +108,15 @@ class Star : public BaseStar {
 public:
   Star (
     const CompletenessModel* completeness_model,
-    double mass, double radius,
+    double ln_mass, double sigma_ln_mass, double ln_radius, double sigma_ln_radius,
     double dataspan, double dutycycle,
     unsigned n_cdpp, const double* cdpp_x, const double* cdpp_y,
     unsigned n_thresh, const double* thresh_x, const double* thresh_y
   )
-  : mass_(mass)                                    // M_Sun
-  , radius_(radius)                                // R_Sun
+  : ln_mass_(ln_mass)                              // ln(M_Sun)
+  , sigma_ln_mass_(sigma_ln_mass)                  // uncert ln(M_Sun)
+  , ln_radius_(ln_radius)                          // ln(R_Sun)
+  , sigma_ln_radius_(sigma_ln_radius)              // uncert ln(R_Sun)
   , dataspan_(dataspan)                            // days
   , dutycycle_(dutycycle)                          // arbitrary
   , timefactor_(dataspan*dutycycle)
@@ -130,10 +136,8 @@ public:
     }
   };
 
-  double get_mass () const { return mass_; };
-  double get_radius () const { return radius_; };
-  double get_aor (double period) const {
-    return pow(GRAV_OVER_4_PI * period * period * mass_, 1./3) / radius_;
+  double get_a (double period, double mass) const {
+    return pow(GRAV_OVER_4_PI * period * period * mass, 1./3);
   };
   double get_impact (double aor, double incl, double e, double omega) const {
     return std::abs(aor * cos(incl) * (1.0 - e * e) / (1.0 + e * sin(omega)));
@@ -157,15 +161,16 @@ public:
     return 1.0e6 * (1.0 - ld(params, ror, b));
   };
 
-  double get_completeness (double q1, double q2, double period, double rp,
+  double get_completeness (double mass, double radius, double q1, double q2,
+                           double period, double rp,
                            double incl, double e, double omega,
                            double* duration, double* depth) const {
     double b, aor, ror, sigma, mest, mes, pdet, pwin;
 
     // Compute the duration; it will be zero if there is no transit.
-    aor = get_aor (period);
+    aor = get_a (period, mass) / radius;
     b = get_impact (aor, incl, e, omega);
-    ror = rp * RADIUS_EARTH / radius_;
+    ror = rp * RADIUS_EARTH / radius;
     *duration = 24.0 * get_duration(aor, period, ror, b, incl, e, omega);
     if (*duration <= DBL_EPSILON) return 0.0;
 
@@ -187,9 +192,19 @@ public:
     return pdet * pwin;
   };
 
+  double sample_mass (random_state_t& state) const {
+    boost::random::normal_distribution<> rng;
+    return exp(ln_mass_ + sigma_ln_mass_ * rng(state));
+  };
+
+  double sample_radius (random_state_t& state) const {
+    boost::random::normal_distribution<> rng;
+    return exp(ln_radius_ + sigma_ln_radius_ * rng(state));
+  };
 
 private:
-  double mass_, radius_, dataspan_, dutycycle_, timefactor_;
+  double ln_mass_, sigma_ln_mass_, ln_radius_, sigma_ln_radius_,
+         dataspan_, dutycycle_, timefactor_;
   std::vector<double> cdpp_x_, cdpp_y_, thresh_x_, thresh_y_;
   const CompletenessModel* completeness_model_;
 
