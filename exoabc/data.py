@@ -12,7 +12,7 @@ __all__ = ["get_catalog", "get_burke_gk", "get_candidates",
            "compute_multiplicity", "calibrate_completeness"]
 
 
-def get_catalog(name, prefix="q1_q16", basepath="data"):
+def get_catalog(name, prefix="q1_q16", basepath=None):
     """
     Download a catalog from the Exoplanet Archive by name and save it as a
     Pandas HDF5 file.
@@ -22,6 +22,9 @@ def get_catalog(name, prefix="q1_q16", basepath="data"):
                      (default: ``data`` in the current working directory)
 
     """
+    if basepath is None:
+        basepath = os.environ.get("EXOABC_DATA", "data")
+
     basepath = os.path.join(basepath, prefix)
     fn = os.path.join(basepath, "{0}.h5".format(name))
     if os.path.exists(fn):

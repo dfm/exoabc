@@ -25,7 +25,7 @@ __all__ = []
 period_range = (50, 300)
 prad_range = (0.75, 2.5)
 depth_range = (0, 1000)
-maxn = 3
+maxn = 5
 
 prefix = "q1_q16"
 stlr = data.get_burke_gk(prefix=prefix)
@@ -36,8 +36,8 @@ sim = Simulator(
     period_range[0], period_range[1], 0.0,
     prad_range[0], prad_range[1], -2.0,
     -3.0, np.zeros(maxn),
-    min_log_sigma=-5.0, max_log_sigma=5.0,
-    min_log_multi=-5.0, max_log_multi=2.0,
+    min_log_sigma=-5.0, max_log_sigma=np.log(np.radians(90)),
+    min_log_multi=-5.0, max_log_multi=3.0,
     release=prefix,
     seed=int(os.getpid() + 1000*time.time()) % 20000,
 )
@@ -124,18 +124,17 @@ def update_target_density(rho, params, weights, percentile=30.0):
 with MPIPool() as pool:
     pool.wait()
 
-    from cycler import cycler
-    from matplotlib import rcParams
-
-    rcParams["font.size"] = 16
-    rcParams["font.family"] = "sans-serif"
-    rcParams["font.sans-serif"] = ["Computer Modern Sans"]
-    rcParams["text.usetex"] = True
-    rcParams["text.latex.preamble"] = r"\usepackage{cmbright}"
-    rcParams["axes.prop_cycle"] = cycler("color", (
-        "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b",
-        "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
-    ))  # d3.js color cycle
+    # from cycler import cycler
+    # from matplotlib import rcParams
+    # rcParams["font.size"] = 16
+    # rcParams["font.family"] = "sans-serif"
+    # rcParams["font.sans-serif"] = ["Computer Modern Sans"]
+    # rcParams["text.usetex"] = True
+    # rcParams["text.latex.preamble"] = r"\usepackage{cmbright}"
+    # rcParams["axes.prop_cycle"] = cycler("color", (
+    #     "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b",
+    #     "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
+    # ))  # d3.js color cycle
 
     # Run step 1 of PMC method.
     N = 1500
@@ -154,6 +153,7 @@ with MPIPool() as pool:
 
         with h5py.File(os.path.join("results", "{0:03d}.h5".format(it)),
                        "w") as f:
+            f.attrs["maxn"] = maxn
             f.attrs["iteration"] = it
             f.attrs["eps"] = eps
             f.attrs["tau"] = tau
