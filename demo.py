@@ -28,7 +28,7 @@ depth_range = (0, 1000)
 maxn = 5
 
 prefix = "q1_q16"
-stlr = data.get_burke_gk(prefix=prefix).iloc[:5000]
+stlr = data.get_burke_gk(prefix=prefix)
 kois = data.get_candidates(stlr=stlr, prefix=prefix)
 
 sim = Simulator(
@@ -36,6 +36,8 @@ sim = Simulator(
     period_range[0], period_range[1], 0.0,
     prad_range[0], prad_range[1], -2.0,
     -3.0, np.zeros(maxn),
+    min_period_slope=-5.0, max_period_slope=3.0,
+    min_radius_slope=-5.0, max_radius_slope=3.0,
     min_log_sigma=-5.0, max_log_sigma=np.log(np.radians(90)),
     min_log_multi=-5.0, max_log_multi=3.0,
     release=prefix,
