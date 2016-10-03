@@ -19,7 +19,7 @@ env:
 addons:
     apt:
         packages:
-            - texlive
+            - texlive-full
             - dvipng
 
 # install:
