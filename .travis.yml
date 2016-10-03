@@ -32,7 +32,7 @@ env:
 install:
     - wget http://mirror.ctan.org/systems/texlive/tlnet/install-tl-unx.tar.gz -O install-tl.tar.gz
     - mkdir -p install-tl
-    - tar -xf install-tl.tar -C install-tl --strip-components 1
+    - tar -xf install-tl.tar.gz -C install-tl --strip-components 1
     - TEXLIVE_INSTALL_PREFIX=`pwd` install-tl/install-tl
     # - wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh;
     # - bash miniconda.sh -b -p $HOME/miniconda
