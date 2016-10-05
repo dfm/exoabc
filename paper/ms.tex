@@ -202,16 +202,7 @@ stars: statistics
 \item Why \abc? Which problems? Limitations of current methods.
 \end{itemize}
 
-\section{A short introduction to Approximate Bayesian Computation}
-
-\begin{itemize}
-\item Qualitative justification.
-\item Theoretical basis.
-\item Methodological questions: (a) sufficient statistics, (b) distance
-function, (c) inference algorithm.
-\end{itemize}
-
-\section{Toy problem: a Poisson process}
+\section{A motivating example: inference with a Poisson process}
 
 A standard problem in the astronomy literature that can~--~and has
 been~--~solved using \abc\ is the situation where we have a procedure for
@@ -254,7 +245,7 @@ N_\obs &\sim& p(N_\obs\mid\mu) = \frac{\mu^{N_\obs}\,e^{-\mu}}{N_\obs!}
 with a single parameter $\mu$.
 Placing a uniform prior on $\log\mu$ between $\mu_\mathrm{min}$ and
 $\mu_\mathrm{max}$, the posterior probability becomes
-\begin{eqnarray}
+\begin{eqnarray}\eqlabel{exact-posterior}
 p(\mu\mid N_\obs) \propto \left\{\begin{array}{ll}
     \frac{1}{\mu}\frac{\mu^{N_\obs}\,e^{-\mu}}{N_\obs!}\quad & \quad
        \mathrm{if}\,\mu_\mathrm{min} \le \mu \le \mu_\mathrm{max} \\
@@ -264,11 +255,11 @@ p(\mu\mid N_\obs) \propto \left\{\begin{array}{ll}
 
 To test the methods, we generated a simulated ``data set'' of $N_\obs =
 \abctoynobs$ from a Poisson process with $\mu_\mathrm{true} = \abctoytruth$.
-
-For this simple example, \dfmfig{abctoy} compares the inferences made using
-\eq{heuristic-likelihood} to the inferences made using \abc\ with a
-pseudo-likelihood
-\begin{eqnarray}
+Using this simulated data, \dfmfig{abctoy} compares the inferences made using
+\eq{heuristic-likelihood} to the exact posterior inference using
+\eq{exact-posterior} and to inferences made using \abc\ with a
+pseudo-likelihood (the details will be given in the following section)
+\begin{eqnarray}\eqlabel{pseudo-likelihood}
 p(N_\obs\mid\mu) &=& \int K(N_\simu,\,N_\obs;\,\epsilon)\,
     p(N_\simu\mid\mu) \dd N_\simu
 \end{eqnarray}
@@ -291,14 +282,78 @@ p(N_\obs\mid\mu) &\approx& \frac{1}{S}\sum_{s=1}^S
 \end{eqnarray}
 for ${N_\simu}^{(s)} \sim \mathrm{Pois}(\mu)$ and $S = \abctoyS$.
 
+From \dfmfig{abctoy}, it is clear that the \abc\ inference correctly recovers
+the exact posterior while the heuristic method underestimates the mean of the
+posterior and overestimates the variance.
+In practice, this inconsistency increases when the true underlying
+distribution is no longer Poisson.
+
+The main point of this demonstration is that the heuristic method commonly
+used to do inference with stochastic population models is not sufficient if we
+want to do rigorous quantitative population inference.
+Instead, \abc\ can be used to capture the exact posterior.
+
 \begin{figure*}[p]~\\
 \begin{center}
 \includegraphics{figures/abctoy.pdf}
 \end{center}
 \caption{%
-A toy example.
+A comparison between a commonly used heuristic method for doing inference with
+stochastic models and \abc.
+The blue histogram shows the posterior inference for the rate parameter $\mu$
+using the heuristic likelihood function from \eq{heuristic-likelihood}, the
+orange histogram shows the \abc\ inference using the pseudo-likelihood from
+\eq{pseudo-likelihood}, and the black curve shows the exact posterior from
+\eq{exact-posterior}.
+The vertical gray line shows the true value of $\mu$ that was used to generate
+the data.
 \dfmfiglabel{abctoy}}
 \end{figure*}
+
+
+\section{A short introduction to Approximate Bayesian Computation}
+
+The problem statement for \abc\ is that you have a method of (stochastically)
+simulating representative data from the model given a set of parameters but it
+is computationally intractable to compute the likelihood of a given data set
+conditioned on these same parameters.
+In other words, you can sample $D_\simu \sim p(D_\simu\mid\theta)$ but you
+can't directly evaluate $p(D_\obs\mid\theta)$ for any values $D_\obs$ and
+$\theta$.
+This means that you can't use standard \mcmc\ methods to draw samples from the
+posterior probability $p(\theta\mid D_\obs) \propto
+p(D_\obs\mid\theta)\,p(\theta)$.
+
+To motivate \abc, let's start with an extreme method.
+Let's say that sample a set of parameters $\theta \sim p(\theta)$ from your
+prior and then simulate some data $D_\simu$ that just happens to
+\emph{exactly} match the observed data $D_\obs$.
+In this case, under your simulation model, this value of $\theta$ is a valid
+sample from the posterior probability density $p(\theta\mid D_\obs)$ even
+though you never evaluated the likelihood.
+Now if you had an infinite amount of computing power and could draw a huge
+number of samples following this procedure and rejecting all samples that
+don't result in an exact match for your data then you could produce a
+posterior sampling for $p(\theta\mid D_\obs)$ without ever evaluating the
+likelihood.
+Of course this method is absurd and intractable so \abc\ builds on this using
+two observations
+\begin{enumerate}
+\item This method will still be correct if sufficient statistics of the
+simulated data match the same sufficient statistics on the observed data.
+\item The comparison between the simulation and the observation can be
+``softened'' without significant loss of information.
+\end{enumerate}
+The first point is correct by definition but we will return to the relevant
+subtleties below.
+The second point is less obvious.
+
+\begin{itemize}
+\item Qualitative justification.
+\item Theoretical basis.
+\item Methodological questions: (a) sufficient statistics, (b) distance
+function, (c) inference algorithm.
+\end{itemize}
 
 
 \section{The occurrence rate of small and cool exoplanets}
