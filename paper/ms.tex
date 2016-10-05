@@ -5,6 +5,7 @@
 \pdfoutput=1
 
 \include{vc}
+\include{figures/abctoy}
 
 \usepackage{microtype}
 
@@ -261,6 +262,9 @@ p(\mu\mid N_\obs) \propto \left\{\begin{array}{ll}
 \end{array}\right. \quad.
 \end{eqnarray}
 
+To test the methods, we generated a simulated ``data set'' of $N_\obs =
+\abctoynobs$ from a Poisson process with $\mu_\mathrm{true} = \abctoytruth$.
+
 For this simple example, \dfmfig{abctoy} compares the inferences made using
 \eq{heuristic-likelihood} to the inferences made using \abc\ with a
 pseudo-likelihood
@@ -279,13 +283,13 @@ K(N_\simu,\,N_\obs;\,\epsilon) \propto \exp\left(
     -\frac{(N_\simu - N_\obs)^2}{2\,\epsilon^2}
 \right)
 \end{eqnarray}
-with $\epsilon \equiv 10^{-3}$.
+with $\epsilon \equiv \abctoyeps$.
 The pseudo-likelihood is computed numerically as
 \begin{eqnarray}
 p(N_\obs\mid\mu) &\approx& \frac{1}{S}\sum_{s=1}^S
     K({N_\simu}^{(s)},\,N_\obs;\,\epsilon)
 \end{eqnarray}
-for ${N_\simu}^{(s)} \sim \mathrm{Pois}(\mu)$ and $S = 50$.
+for ${N_\simu}^{(s)} \sim \mathrm{Pois}(\mu)$ and $S = \abctoyS$.
 
 \begin{figure*}[p]~\\
 \begin{center}
