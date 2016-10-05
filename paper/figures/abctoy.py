@@ -19,8 +19,8 @@ np.random.seed(42)
 def simulator(ln_mu, size=None):
     return np.random.poisson(np.exp(ln_mu), size=size)
 
-true_rate = 4.345
-prior_range = np.array([-5, 2.5])
+true_rate = 6.89
+prior_range = np.array([-5.0, 3.0])
 # true_rate = 50.345
 # prior_range = np.array([0, 4.5])
 
@@ -42,23 +42,22 @@ true_posterior = np.exp(lnprob(np.log(mu_grid)) - np.log(mu_grid))
 true_posterior /= simps(true_posterior, mu_grid)
 
 # Heuristic method:
-def heuristic_log_likelihood_function(N_obs, ln_mu):
+def heuristic_log_probability_function(N_obs, ln_mu):
     N_sim = simulator(float(ln_mu))
     return lnprior(ln_mu) + N_obs * np.log(N_sim) - N_sim
 
-heuristic_log_likelihood = partial(heuristic_log_likelihood_function, N_obs)
-heuristic_chain, _ = mh(heuristic_log_likelihood, np.log([N_obs]), 200000)
+heuristic_log_probability = partial(heuristic_log_probability_function, N_obs)
+heuristic_chain, _ = mh(heuristic_log_probability, np.log([N_obs]), 200000)
 
 # ABC method:
-def pseudo_log_likelihood_function(N_obs, S, eps, ln_mu):
+def pseudo_log_probability_function(N_obs, S, eps, ln_mu):
     N_sim = simulator(float(ln_mu), size=S)
-    # N_sim = np.random.poisson(np.exp(float(ln_mu)), size=S)
     dist = N_sim - N_obs
-    return np.logaddexp.reduce(-0.5 * (dist / eps)**2)
+    return lnprior(ln_mu) + np.logaddexp.reduce(-0.5 * (dist / eps)**2)
 
-pseudo_log_likelihood = partial(pseudo_log_likelihood_function, N_obs, 50,
-                                1e-3)
-pseudo_chain, _ = mh(pseudo_log_likelihood, np.log([N_obs]), 500000)
+pseudo_log_probability = partial(pseudo_log_probability_function, N_obs, 50,
+                                 1e-3)
+pseudo_chain, _ = mh(pseudo_log_probability, np.log([N_obs]), 500000)
 
 fig, ax = plt.subplots(1, 1, figsize=SQUARE_FIGSIZE)
 
