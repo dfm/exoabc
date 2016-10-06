@@ -1,6 +1,6 @@
 #!/bin/bash
 #PBS -l procs=64
-#PBS -l walltime=12:00:00
+#PBS -l walltime=48:00:00
 #PBS -l mem=60GB
 #PBS -N exoabc
 #PBS -M danfm@nyu.edu

@@ -70,7 +70,8 @@ def compute_distance(ds1, ds2):
     multi_dist = np.mean((np.log(ds1[0]+1) - np.log(ds2[0]+1))**2.0)
     period_dist = ks_2samp(ds1[1], ds2[1]).statistic
     depth_dist = ks_2samp(ds1[2], ds2[2]).statistic
-    return multi_dist + period_dist + depth_dist
+    dur_dist = ks_2samp(ds1[3], ds2[3]).statistic
+    return multi_dist + period_dist + depth_dist + dur_dist
 
 def sample(initial):
     if initial is None:
@@ -170,9 +171,10 @@ with MPIPool() as pool:
         fig.savefig(os.path.join("results", "corner-{0:03d}.png".format(it)))
         plt.close(fig)
 
-        fig, axes = plt.subplots(2, 3, figsize=(14, 8))
+        fig, axes = plt.subplots(2, 4, figsize=(16, 8))
 
         # Observed distributions
+        dur_range = (obs_stats[3].min(), obs_stats[3].max())
         for i in np.random.choice(len(weights), p=weights, size=100):
             p = thetas[i]
             sim.set_parameters(p)
@@ -184,17 +186,22 @@ with MPIPool() as pool:
                             color="k", alpha=0.2)
             axes[0, 1].hist(sim_stats[2], range=depth_range, histtype="step",
                             color="k", alpha=0.2)
-            axes[0, 2].plot(sim_stats[0], color="k", alpha=0.2)
+            axes[0, 2].hist(sim_stats[3], range=dur_range, histtype="step",
+                            color="k", alpha=0.2)
+            axes[0, 3].plot(sim_stats[0], color="k", alpha=0.2)
 
         axes[0, 0].hist(obs_stats[1], range=period_range, histtype="step",
                         color="g", lw=2)
         axes[0, 1].hist(obs_stats[2], range=depth_range, histtype="step",
                         color="g", lw=2)
-        axes[0, 2].plot(obs_stats[0], color="g", lw=2)
-        axes[0, 2].set_yscale("log")
+        axes[0, 2].hist(obs_stats[3], range=dur_range, histtype="step",
+                        color="g", lw=2)
+        axes[0, 3].plot(obs_stats[0], color="g", lw=2)
+        axes[0, 3].set_yscale("log")
         axes[0, 0].set_xlabel("period")
         axes[0, 1].set_xlabel("depth")
-        axes[0, 2].set_xlabel("multiplicity")
+        axes[0, 2].set_xlabel("duration")
+        axes[0, 3].set_xlabel("multiplicity")
         axes[0, 0].set_yticklabels([])
         axes[0, 1].set_yticklabels([])
         axes[0, 0].set_ylabel("observed distributions")
@@ -215,7 +222,7 @@ with MPIPool() as pool:
                            axis=1)
         n /= np.sum(n, axis=1)[:, None]
         q = np.percentile(n, [16, 50, 84], axis=0)
-        ax = axes[1, 2]
+        ax = axes[1, 3]
         x = np.arange(maxn+1)
         ax.fill_between(x, q[0], q[2], color="k", alpha=0.1)
         ax.plot(x, q[1], color="k", lw=2)
@@ -224,10 +231,10 @@ with MPIPool() as pool:
                 color="g", lw=2)
         ax.set_xlim(0, maxn)
 
-        axes[1, 2].set_yscale("log")
+        axes[1, 3].set_yscale("log")
         axes[1, 0].set_xlabel("period")
         axes[1, 1].set_xlabel("radius")
-        axes[1, 2].set_xlabel("multiplicity")
+        axes[1, 3].set_xlabel("multiplicity")
         axes[1, 0].set_ylabel("underlying distributions")
 
         fig.tight_layout()
