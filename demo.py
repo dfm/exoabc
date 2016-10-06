@@ -222,7 +222,7 @@ with MPIPool() as pool:
                            axis=1)
         n /= np.sum(n, axis=1)[:, None]
         q = np.percentile(n, [16, 50, 84], axis=0)
-        ax = axes[1, 2]
+        ax = axes[1, 3]
         x = np.arange(maxn+1)
         ax.fill_between(x, q[0], q[2], color="k", alpha=0.1)
         ax.plot(x, q[1], color="k", lw=2)
