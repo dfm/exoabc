@@ -1,10 +1,11 @@
 % Copyright 2015-2016 Dan Foreman-Mackey and the co-authors listed below.
 
-\documentclass[manuscript, letterpaper]{aastex6}
+\documentclass[manuscript, letterpaper]{aastex}
 
 \pdfoutput=1
 
 \include{vc}
+\include{figures/abctoy}
 
 \usepackage{microtype}
 
@@ -69,20 +70,15 @@ With modifications by David W. Hogg and Daniel Foreman-Mackey
 % Projects:
 \newcommand{\project}[1]{\textsl{#1}}
 \newcommand{\kepler}{\project{Kepler}}
-\newcommand{\KT}{\project{K2}}
+\newcommand{\ktwo}{\project{K2}}
 \newcommand{\tess}{\project{TESS}}
 \newcommand{\plato}{\project{PLATO}}
 \newcommand{\gaia}{\project{Gaia}}
-\newcommand{\pdc}{\project{PDC}}
-\newcommand{\bls}{\project{BLS}}
-\newcommand{\emcee}{\project{emcee}}
-\newcommand{\exosyspop}{\project{exosyspop}}
 
+\newcommand{\accronym}[1]{\textsc{#1}}
 \newcommand{\foreign}[1]{\emph{#1}}
 \newcommand{\etal}{\foreign{et\,al.}}
 \newcommand{\etc}{\foreign{etc.}}
-\newcommand{\True}{\foreign{True}}
-\newcommand{\Truth}{\foreign{Truth}}
 
 \newcommand{\dfmfigref}[1]{\ref{fig:#1}}
 \newcommand{\dfmFig}[1]{Figure~\dfmfigref{#1}}
@@ -127,20 +123,17 @@ With modifications by David W. Hogg and Daniel Foreman-Mackey
 % Response
 \newcommand{\response}[1]{{\color{blue}#1}}
 
-
 % Helpers for this paper:
 \newcommand{\license}{MIT License}
 \newcommand{\paper}{paper}
 
 % Notation for this paper:
-\newcommand{\meanpars}{{\ensuremath{\bvec{\theta}}}}
-\newcommand{\kernpars}{{\ensuremath{\bvec{\alpha}}}}
-\newcommand{\params}{{\ensuremath{\bvec{w}}}}
-\newcommand{\poppars}{{\ensuremath{\bvec{\beta}}}}
-\newcommand{\rate}{{\ensuremath{\Gamma}}}
+\newcommand{\obs}{{\ensuremath{\mathrm{obs}}}}
+\newcommand{\simu}{{\ensuremath{\mathrm{sim}}}}
+\def\abc{Approximate Bayesian Computation (\accronym{abc})\def\abc{\accronym{abc}}}
+\def\mcmc{Markov Chain Monte Carlo (\accronym{mcmc})\def\mcmc{\accronym{mcmc}}}
 
-\newcommand{\modelname}[1]{{\textsf{#1}}}
-\newcommand{\datareleaseurl}{\url{http://dx.doi.org/10.5281/zenodo.58273}}
+\newcommand{\datareleaseurl}{TBD}
 
 
 % \shorttitle{The population of long-period transiting exoplanets}
@@ -172,7 +165,20 @@ Approximate Bayesian Computation of the population of exoplanets
 
 \begin{abstract}
 
-Sick.
+The \kepler\ Mission was designed to statistical questions about the
+population of exoplanets.
+So far, all occurrence rate and distribution results have required either
+strong modeling assumptions or heuristic (qualitative) inference methods.
+We present a general method of occurrence rate measurement using Approximate
+Bayesian Computation (ABC).
+ABC allows rigorous posterior inference of population parameters without
+computing a likelihood function.
+Instead, we only need to be able to simulate representative data sets.
+We demonstrate the importance of this method on a simple toy problem with a
+tractable likelihood function and then apply the method to a catalog of
+exoplanet discoveries from the \kepler\ Mission to simultaneously measure the
+occurrence rate and period, size, multiplicity, and mutual inclination
+distributions.
 
 \end{abstract}
 
@@ -191,6 +197,195 @@ stars: statistics
 \clearpage
 \section{Introduction}
 
+\begin{itemize}
+\item Exoplanet populations
+\item Why \abc? Which problems? Limitations of current methods.
+\end{itemize}
+
+\section{A motivating example: inference with a Poisson process}
+
+A standard problem in the astronomy literature that can~--~and has
+been~--~solved using \abc\ is the situation where we have a procedure for
+simulating a population of objects that we then want to compare to the
+observed population.
+For example, in the exoplanet literature, this is the case for most studies of
+the multiplicity distribution of exoplanets; it is easy to simulate and
+observe a population of exoplanetary systems with a given multiplicity
+distribution \citep[for example][]{Fang:2012, Ballard:2016} \dfmtodo{CITE
+Jack} but it is difficult to write down an analytic or otherwise tractable
+likelihood function without making strong assumptions \citep[for
+example]{Tremaine:2012}.
+It is common practice in this field to use the simulator to do inference by
+comparing the simulations to the observed distributions using a heuristic
+``likelihood function''.
+For example, \citet{Ballard:2016} (\dfmtodo{Others?}) draw a realization of
+the observed multiplicity distribution from the model and then compare this to
+the data by computing the Poisson likelihood of the observations but treating
+the simulated number as the expected rate.
+In other words, for each bin $k$ in multiplicity, they compute a likelihood:
+\begin{eqnarray}\eqlabel{heuristic-likelihood}
+p(N_{\obs,k}\mid\theta) &=&
+    \frac{N_{\simu,k}(\theta)^{N_{\obs,k}}\,
+          \exp\left[-N_{\simu,k}(\theta)\right]}{N_{\obs,k}!}
+\end{eqnarray}
+where $N_{\simu,k} \sim p(N_{\simu,k}\mid\theta)$ is the simulated
+number of systems with $k$ transiting planets.
+This might seem intuitive but, as we will demonstrate shortly, it is not valid
+even if the underlying process is actually Poisson and using a model like this
+will lead to incorrect inferences.
+
+To demonstrate the issues with this method, let's start with the simplest toy
+problem: a single observation of a Poisson process.
+In this case, the correct posterior inference can be performed because the
+correct likelihood is analytically tractable.
+The generative model is
+\begin{eqnarray}
+N_\obs &\sim& p(N_\obs\mid\mu) = \frac{\mu^{N_\obs}\,e^{-\mu}}{N_\obs!}
+\end{eqnarray}
+with a single parameter $\mu$.
+Placing a uniform prior on $\log\mu$ between $\mu_\mathrm{min}$ and
+$\mu_\mathrm{max}$, the posterior probability becomes
+\begin{eqnarray}\eqlabel{exact-posterior}
+p(\mu\mid N_\obs) \propto \left\{\begin{array}{ll}
+    \frac{1}{\mu}\frac{\mu^{N_\obs}\,e^{-\mu}}{N_\obs!}\quad & \quad
+       \mathrm{if}\,\mu_\mathrm{min} \le \mu \le \mu_\mathrm{max} \\
+    0 \quad & \quad \mathrm{otherwise}
+\end{array}\right. \quad.
+\end{eqnarray}
+
+To test the methods, we generated a simulated ``data set'' of $N_\obs =
+\abctoynobs$ from a Poisson process with $\mu_\mathrm{true} = \abctoytruth$.
+Using this simulated data, \dfmfig{abctoy} compares the inferences made using
+\eq{heuristic-likelihood} to the exact posterior inference using
+\eq{exact-posterior} and to inferences made using \abc\ with a
+pseudo-likelihood (the details will be given in the following section)
+\begin{eqnarray}\eqlabel{pseudo-likelihood}
+p(N_\obs\mid\mu) &=& \int K(N_\simu,\,N_\obs;\,\epsilon)\,
+    p(N_\simu\mid\mu) \dd N_\simu
+\end{eqnarray}
+where
+\begin{eqnarray}
+p(N_\simu\mid\mu) &=& \frac{\mu^{N_\simu}\,e^{-\mu}}{N_\simu!}
+\end{eqnarray}
+is the generative model.
+For this demonstration, we use a Gaussian kernel
+\begin{eqnarray}
+K(N_\simu,\,N_\obs;\,\epsilon) \propto \exp\left(
+    -\frac{(N_\simu - N_\obs)^2}{2\,\epsilon^2}
+\right)
+\end{eqnarray}
+with $\epsilon \equiv \abctoyeps$.
+The pseudo-likelihood is computed numerically as
+\begin{eqnarray}
+p(N_\obs\mid\mu) &\approx& \frac{1}{S}\sum_{s=1}^S
+    K({N_\simu}^{(s)},\,N_\obs;\,\epsilon)
+\end{eqnarray}
+for ${N_\simu}^{(s)} \sim \mathrm{Pois}(\mu)$ and $S = \abctoyS$.
+
+From \dfmfig{abctoy}, it is clear that the \abc\ inference correctly recovers
+the exact posterior while the heuristic method underestimates the mean of the
+posterior and overestimates the variance.
+In practice, this inconsistency increases when the true underlying
+distribution is no longer Poisson.
+
+The main point of this demonstration is that the heuristic method commonly
+used to do inference with stochastic population models is not sufficient if we
+want to do rigorous quantitative population inference.
+Instead, \abc\ can be used to capture the exact posterior.
+
+\begin{figure*}[p]~\\
+\begin{center}
+\includegraphics{figures/abctoy.pdf}
+\end{center}
+\caption{%
+A comparison between a commonly used heuristic method for doing inference with
+stochastic models and \abc.
+The blue histogram shows the posterior inference for the rate parameter $\mu$
+using the heuristic likelihood function from \eq{heuristic-likelihood}, the
+orange histogram shows the \abc\ inference using the pseudo-likelihood from
+\eq{pseudo-likelihood}, and the black curve shows the exact posterior from
+\eq{exact-posterior}.
+The vertical gray line shows the true value of $\mu$ that was used to generate
+the data.
+\dfmfiglabel{abctoy}}
+\end{figure*}
+
+
+\section{A short introduction to Approximate Bayesian Computation}
+
+The problem statement for \abc\ is that you have a method of (stochastically)
+simulating representative data from the model given a set of parameters but it
+is computationally intractable to compute the likelihood of a given data set
+conditioned on these same parameters.
+In other words, you can sample $D_\simu \sim p(D_\simu\mid\theta)$ but you
+can't directly evaluate $p(D_\obs\mid\theta)$ for any values $D_\obs$ and
+$\theta$.
+This means that you can't use standard \mcmc\ methods to draw samples from the
+posterior probability $p(\theta\mid D_\obs) \propto
+p(D_\obs\mid\theta)\,p(\theta)$.
+
+To motivate \abc, let's start with an extreme method.
+Let's say that sample a set of parameters $\theta \sim p(\theta)$ from your
+prior and then simulate some data $D_\simu$ that just happens to
+\emph{exactly} match the observed data $D_\obs$.
+In this case, under your simulation model, this value of $\theta$ is a valid
+sample from the posterior probability density $p(\theta\mid D_\obs)$ even
+though you never evaluated the likelihood.
+Now if you had an infinite amount of computing power and could draw a huge
+number of samples following this procedure and rejecting all samples that
+don't result in an exact match for your data then you could produce a
+posterior sampling for $p(\theta\mid D_\obs)$ without ever evaluating the
+likelihood.
+Of course this method is absurd and intractable so \abc\ builds on this using
+two observations
+\begin{enumerate}
+\item This method will still be correct if sufficient statistics of the
+simulated data match the same sufficient statistics on the observed data.
+\item The comparison between the simulation and the observation can be
+``softened'' without significant loss of information.
+\end{enumerate}
+The first point is correct by definition but we will return to the relevant
+subtleties below.
+The second point is less obvious.
+
+\begin{itemize}
+\item Qualitative justification.
+\item Theoretical basis.
+\item Methodological questions: (a) sufficient statistics, (b) distance
+function, (c) inference algorithm.
+\end{itemize}
+
+
+\section{The occurrence rate of small and cool exoplanets}
+
+\begin{itemize}
+\item Sample selection \citep{Burke:2015}.
+\item Generative model: power laws, discussion of Poisson process.
+\item Observation model: \citep{Christiansen:2013,Christiansen:2015,Burke:2015}
+\item Statistics, distance metric
+\item Inference method: PMC, MCMC, etc.
+\item Results: compare to \citet{Burke:2015}
+\end{itemize}
+
+\section{The multiplicity \& mutual inclination of exoplanetary systems}
+
+\begin{itemize}
+\item Sample selection: looks as a function of stellar type.
+\item Generative model: more flexible than power laws.
+\item Observation model: calibrating the completeness and caveats: CITE
+Christiansen note
+\item Inference method: PMC, MCMC, etc.
+\item Results
+\end{itemize}
+
+\section{The potential impact of Approximate Bayesian Computation}
+
+\begin{itemize}
+\item More general generative models means fewer and weaker assumptions.
+\item False positives.
+\item Physical models.
+\end{itemize}
+
 
 \vspace{1.5em}
 All of the code used in this project is available from
@@ -202,9 +397,17 @@ with git commit \texttt{\githash} (\gitdate).
 
 % \acknowledgments
 \vspace{1.5em}
-It is a pleasure to thank
-everyone
+DFM would like to thank Jessi Cisewski for introducing him and the SAMSI
+exoplanet populations working group to the method of \abc.
+It is a pleasure to also thank
+Eric Agol,
+Eric Ford,
+David Hogg,
+and
+Richard Wilkinson,
 for helpful discussions and contributions.
+
+\dfmtodo{Thank SAMSI.}
 
 This research made use of the NASA \project{Astrophysics Data System} and the
 NASA Exoplanet Archive.
@@ -215,7 +418,7 @@ This \paper\ includes data collected by the \kepler\ mission. Funding for the
 \kepler\ mission is provided by the NASA Science Mission directorate.
 We are grateful to the entire \kepler\ team, past and present.
 Their tireless efforts were all essential to the tremendous success of the
-mission and the successes of \KT, present and future.
+mission and the successes of \ktwo, present and future.
 
 These data were obtained from the Mikulski Archive for Space Telescopes
 (MAST).
@@ -229,16 +432,11 @@ University.
 
 \facility{Kepler}
 \software{%
-    \project{batman} \citep{Kreidberg:2015},
-    \project{ceres} \citep{Agarwal:2016},
     \project{corner.py} \citep{Foreman-Mackey:2016},
-    \project{emcee} \citep{Foreman-Mackey:2013},
-    \project{george} \citep{Ambikasaran:2016},
-    \project{isochrones} \citep{Morton:2015},
 	\project{matplotlib} \citep{Hunter:2007},
 	\project{numpy} \citep{Van-Der-Walt:2011},
-	\project{scipy} \citep{Jones:2001},
-    \project{vespa} \citep{Morton:2015b}}.
+	\project{scipy} \citep{Jones:2001}
+}
 
 % \newpage
 % \appendix
