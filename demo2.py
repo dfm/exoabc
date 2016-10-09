@@ -30,7 +30,7 @@ maxn = 8
 
 prefix = "q1_q17_dr24"
 stlr = data.get_burke_gk(prefix=prefix)
-kois = data.get_candidates(stlr=stlr, prefix=prefix)
+kois = data.get_candidates(stlr=stlr, prefix=prefix, mesthresh=15.0)
 params, fig = data.calibrate_completeness(stlr, period_range=period_range,
                                           plot=True)
 fig.savefig("completeness.png")
