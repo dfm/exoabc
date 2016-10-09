@@ -8,6 +8,8 @@ from io import BytesIO  # Python 3 only!
 import matplotlib.pyplot as pl
 from scipy.optimize import leastsq
 
+from .sim import DR24CompletenessModel
+
 __all__ = ["get_catalog", "get_burke_gk", "get_candidates",
            "compute_multiplicity", "calibrate_completeness"]
 
@@ -156,8 +158,8 @@ def compute_multiplicity(nstars, kois, nmax=None):
     return data
 
 
-def calibrate_completeness(stlr, mesthresh=15.0, period_range=None,
-                           plot=False):
+def calibrate_completeness(stlr, mesthresh=15.0, mesmax=50.0,
+                           period_range=None, plot=False):
     """
     Calibrate the completeness model using injections and given a stellar
     catalog.
@@ -173,7 +175,7 @@ def calibrate_completeness(stlr, mesthresh=15.0, period_range=None,
         "recovered", "meas_mes", "r_period", "r_epoch", "r_depth", "r_dur",
         "r_b", "r_ror", "r_aor"
     ]
-    inj = pd.read_csv(os.path.join("data", "q1_q17_dr24_injections.txt"),
+    inj = pd.read_csv(os.path.join("data", "q1_q17_dr24", "injections.txt"),
                       delim_whitespace=True, skiprows=4, header=None,
                       names=names, na_values="null")
     m = inj.offset_from_source == 0
@@ -185,13 +187,25 @@ def calibrate_completeness(stlr, mesthresh=15.0, period_range=None,
     # Restrict to the stellar sample.
     inj = pd.merge(inj, stlr[["kepid"]], on="kepid", how="inner")
 
-    x = np.array(inj.expect_mes, dtype=float)
-    y = np.array(inj.recovered, dtype=float)
-    y[np.array(inj.meas_mes < mesthresh)] = 0.0
+    y = np.array(inj.expect_mes, dtype=float)
+    m = y < mesmax
+    y = y[m]
+    x = np.array(inj.period, dtype=float)[m]
+    z = np.array(inj.recovered, dtype=float)[m]
+    z[np.array(inj.meas_mes[m] < mesthresh)] = 0.0
 
-    p0 = np.array([0.0, 1.0, 15.0, np.log(0.5)])
-    resid = lambda p: y - completeness_model(p, x)
+    # Compute the weights (prior) model.
+    N, X, Y = np.histogram2d(x, y, (22, 23))
+    inds_x = np.clip(np.digitize(x, X) - 1, 0, len(X) - 2)
+    inds_y = np.clip(np.digitize(y, Y) - 1, 0, len(Y) - 2)
+    w = np.sqrt(N[inds_x, inds_y])
+
+    # Fit the completeness model.
+    p0 = np.array([0.0, 0.7, 0.0, mesthresh, 0.0, 0.0])
+    completeness_model = DR24CompletenessModel()
+    resid = lambda p: (z - completeness_model.get_pdet(p, x, y)) / w
     params, _, info, msg, flag = leastsq(resid, p0, full_output=True)
+    print(msg)
     if flag not in [1, 2, 3, 4]:
         print("Warning: completeness calibration did not converge. Message:")
         print(msg)
@@ -201,19 +215,20 @@ def calibrate_completeness(stlr, mesthresh=15.0, period_range=None,
 
     fig = pl.figure()
     ax = fig.add_subplot(111)
-    b = np.linspace(0, 3*mesthresh, 30)
-    n_tot, _ = np.histogram(x, b)
-    n_rec, _ = np.histogram(x[y > 0], b)
-    n = n_rec / n_tot
-    ax.errorbar(0.5*(b[:-1] + b[1:]), n, yerr=n / np.sqrt(n_rec), fmt=".k")
-    x2 = np.linspace(0, 3*mesthresh, 1000)
-    ax.plot(x2, completeness_model(params, x2), "g")
+    q = np.percentile(x, [25, 50, 75])
+    b = np.linspace(0, 3*mesthresh, 15)
+    y2 = np.linspace(0, 3*mesthresh, 1000)
+    for mn, mx, c in zip(np.append(x.min(), q), np.append(q, x.max()), "rgbk"):
+        m = (mn <= x) & (x < mx)
+        n_tot, _ = np.histogram(y[m], b)
+        n_rec, _ = np.histogram(y[m][z[m] > 0], b)
+        n = n_rec / n_tot
+        ax.errorbar(0.5*(b[:-1] + b[1:]), n, yerr=n / np.sqrt(n_rec), fmt=".",
+                    color=c)
+        z2 = completeness_model.get_pdet(params, 0.5*(mn+mx)+np.zeros_like(y2),
+                                         y2)
+        ax.plot(y2, z2, color=c)
     ax.set_xlim(0, 3*mesthresh)
     ax.set_xlabel("expected MES")
     ax.set_ylabel("completeness")
     return params, fig
-
-
-def completeness_model(pars, x):
-    y = np.polyval(pars[:2], x) / (1 + np.exp(-(x - pars[2])/np.exp(pars[3])))
-    return y * (0.0 < y) * (y <= 1.0) + 1.0 * (y > 1.0)

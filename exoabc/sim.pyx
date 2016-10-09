@@ -73,6 +73,7 @@ cdef extern from "exoabc/exoabc.h" namespace "exoabc":
             double mes0_m, double mes0_b,
             double lnw_m, double lnw_b
         )
+        double get_pdet (double period, double mes, double mest)
     cdef cppclass Star:
         Star (
             const CompletenessModel* completeness_model,
@@ -105,6 +106,34 @@ cdef extern from "exoabc/exoabc.h" namespace "exoabc":
         void get_parameter_values (double* params)
         double set_parameter_values (const double* params)
         double log_pdf ()
+
+
+cdef class DR24CompletenessModel:
+
+    def get_pdet(self,
+                 np.ndarray[DTYPE_t, ndim=1, mode='c'] params,
+                 np.ndarray[DTYPE_t, ndim=1, mode='c'] period,
+                 np.ndarray[DTYPE_t, ndim=1, mode='c'] mes):
+        # Check the shapes.
+        cdef int n = period.shape[0]
+        if n != mes.shape[0]:
+            raise ValueError("dimension mismatch (period/mes)")
+
+        # Build the completeness model.
+        if params.shape[0] != 6:
+            raise ValueError("dimension mismatch (params)")
+
+        # Build the completeness model
+        cdef Q1_Q17_CompletenessModel* model = new Q1_Q17_CompletenessModel(
+            params[0], params[1], params[2], params[3], params[4], params[5],
+        )
+
+        cdef int i
+        cdef np.ndarray[DTYPE_t, ndim=1, mode='c'] output = np.empty(n, dtype=DTYPE)
+        for i in range(n):
+            output[i] = model.get_pdet(period[i], mes[i], 0.0)
+        del model
+        return output
 
 
 cdef class Simulator:

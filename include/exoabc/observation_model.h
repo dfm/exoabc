@@ -78,9 +78,10 @@ public:
       lnw_m_(lnw_m), lnw_b_(lnw_b) {};
 
   double get_pdet (double period, double mes, double mest) const {
-    double qmax = qmax_m_ * period + qmax_b_,
-            mes0 = mes0_m_ * period + mes0_b_,
-            invw = exp(-lnw_m_ * period - lnw_b_);
+    double x = log(period),
+           qmax = qmax_m_ * x + qmax_b_,
+           mes0 = mes0_m_ * x + mes0_b_,
+           invw = exp(-lnw_m_ * x - lnw_b_);
     double y = qmax / (1.0 + exp(-(mes - mes0) * invw));
     if (y < 0.0) return 0.0;
     if (y > 1.0) return 1.0;
