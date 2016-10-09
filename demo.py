@@ -70,8 +70,8 @@ def compute_distance(ds1, ds2):
     multi_dist = np.mean((np.log(ds1[0]+1) - np.log(ds2[0]+1))**2.0)
     period_dist = ks_2samp(ds1[1], ds2[1]).statistic
     depth_dist = ks_2samp(ds1[2], ds2[2]).statistic
-    dur_dist = ks_2samp(ds1[3], ds2[3]).statistic
-    return multi_dist + period_dist + depth_dist + dur_dist
+    # dur_dist = ks_2samp(ds1[3], ds2[3]).statistic
+    return multi_dist + period_dist + depth_dist  # + dur_dist
 
 def sample(initial):
     if initial is None:
@@ -125,7 +125,9 @@ def update_target_density(rho, params, weights, percentile=30.0):
     return eps, tau
 
 with MPIPool() as pool:
-    pool.wait()
+    if not pool.is_master():
+        pool.wait()
+        sys.exit(0)
 
     # from cycler import cycler
     # from matplotlib import rcParams
@@ -148,7 +150,7 @@ with MPIPool() as pool:
     os.makedirs("results", exist_ok=True)
     stlr.to_hdf(os.path.join("results", "stlr.h5"), "stlr", format="t")
     kois.to_hdf(os.path.join("results", "kois.h5"), "kois", format="t")
-    for it in range(10):
+    for it in range(100):
         eps, tau = update_target_density(rhos, thetas, weights)
         func = partial(pmc_sample_one, eps, tau, thetas, weights)
         rhos, thetas, states, weights = parse_samples(list(pool.map(
