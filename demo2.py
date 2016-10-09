@@ -26,7 +26,7 @@ period_range = (10, 300)
 # period_range = (50, 300)
 prad_range = (0.75, 2.5)
 depth_range = (0, 1000)
-maxn = 5
+maxn = 8
 
 prefix = "q1_q17_dr24"
 stlr = data.get_burke_gk(prefix=prefix)
