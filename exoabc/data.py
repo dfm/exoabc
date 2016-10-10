@@ -158,7 +158,7 @@ def compute_multiplicity(nstars, kois, nmax=None):
     return data
 
 
-def calibrate_completeness(stlr, mesthresh=15.0, mesmax=50.0,
+def calibrate_completeness(stlr, mesthresh=15.0, mesmax=50.0, basepath=None,
                            period_range=None, plot=False):
     """
     Calibrate the completeness model using injections and given a stellar
@@ -168,6 +168,11 @@ def calibrate_completeness(stlr, mesthresh=15.0, mesmax=50.0,
     :param mesthresh: the target MES threshold
 
     """
+    if basepath is None:
+        basepath = os.environ.get("EXOABC_DATA", "data")
+    basepath = os.path.join(basepath, "q1_q17_dr24")
+    fn = os.path.join(basepath, "injections.txt")
+
     # Load the injection catalog.
     names = [
         "kepid", "sky", "period", "epoch", "t_depth", "t_dur", "t_b", "t_ror",
@@ -175,8 +180,7 @@ def calibrate_completeness(stlr, mesthresh=15.0, mesmax=50.0,
         "recovered", "meas_mes", "r_period", "r_epoch", "r_depth", "r_dur",
         "r_b", "r_ror", "r_aor"
     ]
-    inj = pd.read_csv(os.path.join("data", "q1_q17_dr24", "injections.txt"),
-                      delim_whitespace=True, skiprows=4, header=None,
+    inj = pd.read_csv(fn, delim_whitespace=True, skiprows=4, header=None,
                       names=names, na_values="null")
     m = inj.offset_from_source == 0
     if period_range is not None:
