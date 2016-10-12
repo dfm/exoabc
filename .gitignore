@@ -3,3 +3,9 @@ data
 exoabc/*.cpp
 old
 test
+*.o[0-9]*
+boost*
+build
+*.egg-info
+__pycache__
+*.so

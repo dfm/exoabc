@@ -1,0 +1,25 @@
+#!/bin/bash
+#PBS -l procs=64
+#PBS -l walltime=48:00:00
+#PBS -l mem=60GB
+#PBS -N exoabc2
+#PBS -M danfm@nyu.edu
+#PBS -j oe
+
+module purge
+export PATH="$HOME/miniconda3/bin:$PATH"
+module load mvapich2/intel/2.0rc1
+
+export OMP_NUM_THREADS=1
+
+export EXOABC_DATA=$SCRATCH/exoabc/data
+
+SRCDIR=$HOME/projects/exoabc
+export PATH="$SRCDIR:$PATH"
+
+RUNDIR=$SCRATCH/exoabc/demo2/${PBS_JOBID/.*}
+mkdir -p $RUNDIR
+
+cd $RUNDIR
+mpiexec -np $PBS_NP python $SRCDIR/demo2.py q1_q17_dr24
+

@@ -5,6 +5,7 @@ from __future__ import division, print_function
 
 import os
 import time
+import argparse
 from math import factorial
 from functools import partial
 from collections import Counter
@@ -22,18 +23,35 @@ from exoabc import Simulator, data
 
 __all__ = []
 
-period_range = (10, 300)
-# period_range = (50, 300)
-prad_range = (0.75, 2.5)
-depth_range = (0, 1000)
-maxn = 8
+parser = argparse.ArgumentParser(
+    description="collect some search and injection/recovery results"
+)
+parser.add_argument("prefix", choices=["q1_q16", "q1_q17_dr24"])
+args = parser.parse_args()
 
-prefix = "q1_q17_dr24"
-stlr = data.get_burke_gk(prefix=prefix)
-kois = data.get_candidates(stlr=stlr, prefix=prefix, mesthresh=15.0)
-params, fig = data.calibrate_completeness(stlr, period_range=period_range,
-                                          plot=True)
-fig.savefig("completeness.png")
+if args.prefix == "q1_q17_dr24":
+    period_range = (10, 300)
+    prad_range = (0.75, 2.5)
+    depth_range = (0, 1000)
+    maxn = 8
+    prefix = "q1_q17_dr24"
+    stlr = data.get_burke_gk(prefix=prefix)
+    kois = data.get_candidates(stlr=stlr, prefix=prefix, mesthresh=15.0)
+    params, fig = data.calibrate_completeness(stlr, period_range=period_range,
+                                              plot=True)
+    fig.savefig("completeness.png")
+    plt.close(fig)
+elif args.prefix == "q1_q16":
+    params = None
+    period_range = (50, 300)
+    prad_range = (0.75, 2.5)
+    depth_range = (0, 1000)
+    maxn = 5
+    prefix = "q1_q16"
+    stlr = data.get_burke_gk(prefix=prefix)
+    kois = data.get_candidates(stlr=stlr, prefix=prefix)
+else:
+    assert False, "Invalid prefix"
 
 sim = Simulator(
     stlr,
@@ -43,7 +61,7 @@ sim = Simulator(
     min_period_slope=-5.0, max_period_slope=3.0,
     min_radius_slope=-5.0, max_radius_slope=3.0,
     min_log_sigma=-5.0, max_log_sigma=np.log(np.radians(90)),
-    min_log_multi=-5.0, max_log_multi=3.0,
+    min_log_multi=-10.0, max_log_multi=10.0,
     release=prefix, completeness_params=params,
     seed=int(os.getpid() + 1000*time.time()) % 20000,
 )
