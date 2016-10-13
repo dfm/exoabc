@@ -61,7 +61,7 @@ sim = Simulator(
     min_period_slope=-5.0, max_period_slope=3.0,
     min_radius_slope=-5.0, max_radius_slope=3.0,
     min_log_sigma=-5.0, max_log_sigma=np.log(np.radians(90)),
-    min_log_multi=-10.0, max_log_multi=10.0,
+    min_log_multi=-10.0, max_log_multi=100.0,
     release=prefix, completeness_params=params,
     seed=int(os.getpid() + 1000*time.time()) % 20000,
 )
