@@ -169,6 +169,10 @@ public:
     return log_prior;
   };
 
+  double evaluate_multiplicity (double n) const {
+    return this->multi_distribution_->log_pdf(n);
+  };
+
 private:
   std::vector<BaseParameter*> parameters_;
   std::vector<const BaseStar*> stars_;

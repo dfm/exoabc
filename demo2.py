@@ -4,6 +4,7 @@
 from __future__ import division, print_function
 
 import os
+import sys
 import time
 import argparse
 from math import factorial
@@ -27,6 +28,7 @@ parser = argparse.ArgumentParser(
     description="collect some search and injection/recovery results"
 )
 parser.add_argument("prefix", choices=["q1_q16", "q1_q17_dr24"])
+parser.add_argument("--poisson", action="store_true")
 args = parser.parse_args()
 
 if args.prefix == "q1_q17_dr24":
@@ -53,16 +55,26 @@ elif args.prefix == "q1_q16":
 else:
     assert False, "Invalid prefix"
 
+if args.poisson:
+    multi_params = 0.0
+    min_log_multi = -10.0
+    max_log_multi = 1.0
+else:
+    multi_params = np.zeros(maxn)
+    min_log_multi = -10.0
+    max_log_multi = 100.0
+
 sim = Simulator(
     stlr,
     period_range[0], period_range[1], 0.0,
     prad_range[0], prad_range[1], -2.0,
-    -3.0, np.zeros(maxn),
+    -3.0, multi_params,
     min_period_slope=-5.0, max_period_slope=3.0,
     min_radius_slope=-5.0, max_radius_slope=3.0,
     min_log_sigma=-5.0, max_log_sigma=np.log(np.radians(90)),
-    min_log_multi=-10.0, max_log_multi=100.0,
+    min_log_multi=min_log_multi, max_log_multi=max_log_multi,
     release=prefix, completeness_params=params,
+    poisson=args.poisson,
     seed=int(os.getpid() + 1000*time.time()) % 20000,
 )
 
@@ -89,7 +101,10 @@ def compute_stats(catalog):
 obs_stats = compute_stats(kois)
 
 def compute_distance(ds1, ds2):
-    multi_dist = np.mean((np.log(ds1[0]+1) - np.log(ds2[0]+1))**2.0)
+    if args.poisson:
+        multi_dist = 0.0
+    else:
+        multi_dist = np.mean((np.log(ds1[0]+1) - np.log(ds2[0]+1))**2.0)
     period_dist = ks_2samp(ds1[1], ds2[1]).statistic
     depth_dist = ks_2samp(ds1[2], ds2[2]).statistic
     # dur_dist = ks_2samp(ds1[3], ds2[3]).statistic
@@ -164,7 +179,8 @@ with MPIPool() as pool:
     # ))  # d3.js color cycle
 
     # Run step 1 of PMC method.
-    N = 1500
+    N = 100
+    # N = 1500
     rhos, thetas, states = parse_samples(list(pool.map(
         sample, tqdm.tqdm((None for N in range(N)), total=N))))
     weights = np.ones(len(rhos)) / len(rhos)
@@ -241,18 +257,17 @@ with MPIPool() as pool:
             ax.plot(x, q[1], color="k", lw=2)
             ax.set_xlim(*rng)
 
-        n = np.concatenate((np.ones((len(thetas), 1)),
-                            np.exp(thetas[:, -maxn:])),
-                           axis=1)
-        n /= np.sum(n, axis=1)[:, None]
-        q = np.percentile(n, [16, 50, 84], axis=0)
+        # Plot the multiplicity distribution.
+        multi = np.empty((len(thetas), maxn+1))
+        inds = np.arange(maxn+1).astype(np.float64)
+        for i in range(len(thetas)):
+            p = thetas[i]
+            sim.set_parameters(p)
+            multi[i] = sim.evaluate_multiplicity(inds)
         ax = axes[1, 3]
-        x = np.arange(maxn+1)
-        ax.fill_between(x, q[0], q[2], color="k", alpha=0.1)
-        ax.plot(x, q[1], color="k", lw=2)
-        lam = np.exp(-0.25089448)
-        ax.plot(x, lam**x * np.exp(-lam) / np.array(list(map(factorial, x))),
-                color="g", lw=2)
+        q = np.percentile(np.exp(multi), [16, 50, 84], axis=0)
+        ax.fill_between(inds, q[0], q[2], color="k", alpha=0.1)
+        ax.plot(inds, q[1], color="k", lw=2)
         ax.set_xlim(0, maxn)
 
         axes[1, 3].set_yscale("log")

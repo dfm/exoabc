@@ -61,6 +61,8 @@ cdef extern from "exoabc/exoabc.h" namespace "exoabc":
     cdef cppclass Multinomial(Distribution):
         Multinomial(BaseParameter*)
         void add_bin(Parameter*)
+    cdef cppclass Poisson(Distribution):
+        Poisson(BaseParameter*)
 
     # Observation model
     cdef cppclass CompletenessModel:
@@ -106,6 +108,7 @@ cdef extern from "exoabc/exoabc.h" namespace "exoabc":
         void get_parameter_values (double* params)
         double set_parameter_values (const double* params)
         double log_pdf ()
+        double evaluate_multiplicity (double n)
 
 
 cdef class DR24CompletenessModel:
@@ -158,6 +161,7 @@ cdef class Simulator:
                   double min_radius_slope=-4.0, double max_radius_slope=3.0,
                   double min_log_sigma=-5.0, double max_log_sigma=1.0,
                   double min_log_multi=-8.0, double max_log_multi=8.0,
+                  poisson=False,
                   eccen_params=(0.867, 3.03),
                   seed=None, release=None, completeness_params=None):
         # Set up the random state
@@ -207,25 +211,38 @@ cdef class Simulator:
             new Parameter(name,
                           new Uniform(min_log_sigma, max_log_sigma), log_sigma)
         )
+
+        # Multiplicity
         cdef np.ndarray[DTYPE_t, ndim=1] lmp = np.atleast_1d(log_multi_params)
-        cdef Multinomial* multi = new Multinomial(new Parameter(0.0))
+        cdef Distribution* multi
+        cdef Multinomial* multi0
         cdef Parameter* par
         cdef int i
         cdef double v
-        for i, v in enumerate(log_multi_params):
-            name = "log_rate_{0}".format(i+1).encode("ascii")
-            par = new Parameter(name, new Uniform(min_log_multi, max_log_multi), v)
-            multi.add_bin(par)
+
+        if poisson:
+            par = new Parameter(name, new Uniform(min_log_multi,
+                                                  max_log_multi), lmp[0])
+            multi = new Poisson(par)
+        else:
+            multi0 = new Multinomial(new Parameter(0.0))
+            for i, v in enumerate(log_multi_params):
+                name = "log_rate_{0}".format(i+1).encode("ascii")
+                par = new Parameter(name, new Uniform(min_log_multi,
+                                                      max_log_multi), v)
+                multi0.add_bin(par)
+            multi = multi0
 
         # Build the simulator
         self.simulation = new Simulation(period, radius, eccen, width, multi)
 
         # Add in the stars from the catalog
         cdef Star* starobj
-        cdef np.ndarray[DTYPE_t, ndim=1] cdpp_x
-        cdef np.ndarray[DTYPE_t, ndim=1] cdpp_y
-        cdef np.ndarray[DTYPE_t, ndim=1] thr_x
-        cdef np.ndarray[DTYPE_t, ndim=1] thr_y
+        cdef int dim
+        cdef np.ndarray[DTYPE_t, ndim=1] cdpp_x, cdpp_y
+        cdef np.ndarray[DTYPE_t, ndim=2] cdpp_y0
+        cdef np.ndarray[DTYPE_t, ndim=1] thr_x, thr_y
+        cdef np.ndarray[DTYPE_t, ndim=2] thr_y0
 
         # Which columns have the cdpp
         cdpp_cols = np.array([k for k in stars.keys()
@@ -243,14 +260,15 @@ cdef class Simulator:
         thr_x = np.ascontiguousarray(thr_x[thr_inds], dtype=np.float64)
         thr_cols = thr_cols[thr_inds]
 
+        # Pull out the CDPP values.
+        cdpp_y0 = np.array(stars[cdpp_cols], dtype=np.float64)
+
+        # And the MES thresholds.
+        thr_y0 = np.array(stars[thr_cols], dtype=np.float64)
+
         cdef double mn, mx, sig_m, sig_r
-        for _, star in tqdm(stars.iterrows(), total=len(stars)):
-            # Pull out the CDPP values.
-            cdpp_y = np.ascontiguousarray(star[cdpp_cols], dtype=np.float64)
-
-            # And the MES thresholds.
-            thr_y = np.ascontiguousarray(star[thr_cols], dtype=np.float64)
-
+        for i, (_, star) in tqdm(enumerate(stars.iterrows()),
+                                 total=len(stars)):
             # Work out uncertainties.
             mx = log(star.mass + star.mass_err1)
             mn = log(star.mass + star.mass_err2)
@@ -259,13 +277,21 @@ cdef class Simulator:
             mn = log(star.radius + star.radius_err2)
             sig_r = 0.5 * (mx - mn)
 
+            # Pull out the CDPP data.
+            thr_y = thr_y0[i]
+            cdpp_y = cdpp_y0[i]
+
             # Put the star together
             starobj = new Star(
                 self.completeness_model,
                 log(star.mass), sig_m, log(star.radius), sig_m,
                 star.dataspan, star.dutycycle,
-                cdpp_x.shape[0], <double*>cdpp_x.data, <double*>cdpp_y.data,
-                thr_x.shape[0], <double*>thr_x.data, <double*>thr_y.data,
+                cdpp_x.shape[0],
+                <double*>cdpp_x.data,
+                <double*>cdpp_y.data,
+                thr_x.shape[0],
+                <double*>thr_x.data,
+                <double*>thr_y.data,
             )
             self.simulation.add_star(starobj)
 
@@ -280,6 +306,13 @@ cdef class Simulator:
         def __set__(self, value):
             cdef string blob = value
             self.state = deserialize_state(blob)
+
+    def evaluate_multiplicity(self, np.ndarray[DTYPE_t, ndim=1] n):
+        cdef int i
+        cdef np.ndarray[DTYPE_t, ndim=1] m = np.empty(n.shape[0])
+        for i in range(n.shape[0]):
+            m[i] = self.simulation.evaluate_multiplicity(n[i])
+        return m
 
     def sample_parameters(self):
         # Run the simulation

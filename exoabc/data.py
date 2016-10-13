@@ -205,7 +205,7 @@ def calibrate_completeness(stlr, mesthresh=15.0, mesmax=50.0, basepath=None,
     w = np.sqrt(N[inds_x, inds_y])
 
     # Fit the completeness model.
-    p0 = np.array([0.0, 0.7, 0.0, mesthresh, 0.0, 0.0])
+    p0 = np.array([0.0, 0.0, 0.7, 0.0, 0.0, mesthresh, 0.0, 0.0, 0.0])
     completeness_model = DR24CompletenessModel()
     resid = lambda p: (z - completeness_model.get_pdet(p, x, y)) / w
     params, _, info, msg, flag = leastsq(resid, p0, full_output=True)
