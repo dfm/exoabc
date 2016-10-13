@@ -71,17 +71,19 @@ private:
 class Q1_Q17_CompletenessModel : public CompletenessModel {
 public:
   Q1_Q17_CompletenessModel (
-    double qmax_m, double qmax_b,
-    double mes0_m, double mes0_b,
-    double lnw_m, double lnw_b
-  ) : qmax_m_(qmax_m), qmax_b_(qmax_b), mes0_m_(mes0_m), mes0_b_(mes0_b),
-      lnw_m_(lnw_m), lnw_b_(lnw_b) {};
+    double qmax_a, double qmax_m, double qmax_b,
+    double mes0_a, double mes0_m, double mes0_b,
+    double lnw_a, double lnw_m, double lnw_b
+  )
+  : qmax_a_(qmax_a), qmax_m_(qmax_m), qmax_b_(qmax_b),
+    mes0_a_(mes0_a), mes0_m_(mes0_m), mes0_b_(mes0_b),
+    lnw_a_(lnw_a), lnw_m_(lnw_m), lnw_b_(lnw_b) {};
 
   double get_pdet (double period, double mes, double mest) const {
-    double x = log(period),
-           qmax = qmax_m_ * x + qmax_b_,
-           mes0 = mes0_m_ * x + mes0_b_,
-           invw = exp(-lnw_m_ * x - lnw_b_);
+    double x = log(period), x2 = x*x,
+           qmax = qmax_a_ * x2 + qmax_m_ * x + qmax_b_,
+           mes0 = mes0_a_ * x2 + mes0_m_ * x + mes0_b_,
+           invw = exp(-lnw_a_ * x2 - lnw_m_ * x - lnw_b_);
     double y = qmax / (1.0 + exp(-(mes - mes0) * invw));
     if (y < 0.0) return 0.0;
     if (y > 1.0) return 1.0;
@@ -89,7 +91,7 @@ public:
   };
 
 private:
-  double qmax_m_, qmax_b_, mes0_m_, mes0_b_, lnw_m_, lnw_b_;
+  double qmax_a_, qmax_m_, qmax_b_, mes0_a_, mes0_m_, mes0_b_, lnw_a_, lnw_m_, lnw_b_;
 };
 
 

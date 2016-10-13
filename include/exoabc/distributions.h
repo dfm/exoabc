@@ -244,6 +244,21 @@ public:
   };
 };
 
+class Poisson : public Distribution {
+public:
+  Poisson (BaseParameter* log_rate) {
+    this->parameters_.push_back(log_rate);
+  };
+  double sample (random_state_t& state) {
+    boost::random::poisson_distribution<> rng(exp(this->parameters_[0]->value()));
+    return double(rng(state));
+  };
+  double log_pdf (double x) const {
+    boost::math::poisson_distribution<> pois(exp(this->parameters_[0]->value()));
+    return log(boost::math::pdf(pois, x));
+  };
+};
+
 }; // namespace exoabc
 
 #endif  // _EXOABC_DISTRIBUTIONS_

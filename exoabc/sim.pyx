@@ -40,7 +40,7 @@ cdef extern from "exoabc/exoabc.h" namespace "exoabc":
     cdef cppclass BaseParameter:
         pass
     cdef cppclass Distribution:
-        pass
+        double log_pdf(double x)
     cdef cppclass Uniform(Distribution):
         Uniform(double, double)
     cdef cppclass Delta:
@@ -69,9 +69,9 @@ cdef extern from "exoabc/exoabc.h" namespace "exoabc":
         pass
     cdef cppclass Q1_Q17_CompletenessModel(CompletenessModel):
         Q1_Q17_CompletenessModel (
-            double qmax_m, double qmax_b,
-            double mes0_m, double mes0_b,
-            double lnw_m, double lnw_b
+            double qmax_a, double qmax_m, double qmax_b,
+            double mes0_a, double mes0_m, double mes0_b,
+            double lnw_a, double lnw_m, double lnw_b
         )
         double get_pdet (double period, double mes, double mest)
     cdef cppclass Star:
@@ -120,12 +120,14 @@ cdef class DR24CompletenessModel:
             raise ValueError("dimension mismatch (period/mes)")
 
         # Build the completeness model.
-        if params.shape[0] != 6:
+        if params.shape[0] != 9:
             raise ValueError("dimension mismatch (params)")
 
         # Build the completeness model
         cdef Q1_Q17_CompletenessModel* model = new Q1_Q17_CompletenessModel(
-            params[0], params[1], params[2], params[3], params[4], params[5],
+            params[0], params[1], params[2],
+            params[3], params[4], params[5],
+            params[6], params[7], params[8],
         )
 
         cdef int i
@@ -173,12 +175,12 @@ cdef class Simulator:
             self.completeness_model = new Q1_Q16_CompletenessModel()
         elif release == "q1_q17_dr24":
             completeness_params = np.atleast_1d(completeness_params)
-            if not completeness_params.shape == (6, ):
+            if not completeness_params.shape == (9, ):
                 raise ValueError("completeness parameters dimension mismatch")
             self.completeness_model = new Q1_Q17_CompletenessModel(
-                completeness_params[0], completeness_params[1],
-                completeness_params[2], completeness_params[3],
-                completeness_params[4], completeness_params[5],
+                completeness_params[0], completeness_params[1], completeness_params[2],
+                completeness_params[3], completeness_params[4], completeness_params[5],
+                completeness_params[6], completeness_params[7], completeness_params[8],
             )
         else:
             raise ValueError("unrecognized release: '{0}'".format(release))
