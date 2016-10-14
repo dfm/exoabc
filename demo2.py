@@ -102,7 +102,9 @@ obs_stats = compute_stats(kois)
 
 def compute_distance(ds1, ds2):
     if args.poisson:
-        multi_dist = 0.0
+        n1 = np.sum(ds1[0][1:])
+        n2 = np.sum(ds2[0][1:])
+        multi_dist = (np.log(n1)-np.log(n2))**2
     else:
         multi_dist = np.mean((np.log(ds1[0]+1) - np.log(ds2[0]+1))**2.0)
     period_dist = ks_2samp(ds1[1], ds2[1]).statistic
@@ -179,8 +181,8 @@ with MPIPool() as pool:
     # ))  # d3.js color cycle
 
     # Run step 1 of PMC method.
-    N = 100
-    # N = 1500
+    # N = 100
+    N = 1500
     rhos, thetas, states = parse_samples(list(pool.map(
         sample, tqdm.tqdm((None for N in range(N)), total=N))))
     weights = np.ones(len(rhos)) / len(rhos)
