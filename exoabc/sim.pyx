@@ -254,6 +254,8 @@ cdef class Simulator:
         cdpp_inds = np.argsort(cdpp_x)
         cdpp_x = np.ascontiguousarray(cdpp_x[cdpp_inds], dtype=np.float64)
         cdpp_cols = cdpp_cols[cdpp_inds]
+        cdpp_y0 = np.ascontiguousarray(np.array(stars[cdpp_cols]),
+                                       dtype=np.float64)
 
         # And the thresholds
         thr_cols = np.array([k for k in stars.keys()
@@ -262,12 +264,8 @@ cdef class Simulator:
         thr_inds = np.argsort(thr_x)
         thr_x = np.ascontiguousarray(thr_x[thr_inds], dtype=np.float64)
         thr_cols = thr_cols[thr_inds]
-
-        # Pull out the CDPP values.
-        cdpp_y0 = np.array(stars[cdpp_cols], dtype=np.float64)
-
-        # And the MES thresholds.
-        thr_y0 = np.array(stars[thr_cols], dtype=np.float64)
+        thr_y0 = np.ascontiguousarray(np.array(stars[thr_cols]),
+                                      dtype=np.float64)
 
         cdef double mn, mx, sig_m, sig_r
         for i, (_, star) in tqdm(enumerate(stars.iterrows()),
