@@ -45,6 +45,7 @@ public:
   virtual double sample (random_state_t& state) {
     return this->scale_random(rng_(state));
   };
+  virtual double log_prior () const { return 0.0; };
   virtual double log_pdf (double x) const { return 0.0; };
   virtual ~Distribution () {
     for (size_t i = 0; i < size(); ++i) delete parameters_[i];
@@ -225,22 +226,32 @@ public:
   void add_bin (BaseParameter* parameter) {
     this->parameters_.push_back(parameter);
   };
+  double log_prior () const {
+    size_t n = this->parameters_.size();
+    double norm = this->parameters_[0]->value();
+    for (size_t i = 1; i < n; ++i) norm = logsumexp(norm, this->parameters_[i]->value());
+    if (norm > 0.0) return -INFINITY;
+    return 0.0;
+  };
   double scale_random (double u) const {
     size_t n = this->parameters_.size();
-    double logu = log(u), norm = this->parameters_[0]->value(), value = norm;
-    for (size_t i = 1; i < n; ++i) norm = logsumexp(norm, this->parameters_[i]->value());
+    double logu = log(u), value = this->parameters_[0]->value();
     for (size_t i = 1; i < n; ++i) {
-      if (value - norm > logu) return i - 1.0;
+      if (value > logu) return i;
       value = logsumexp(value, this->parameters_[i]->value());
     }
-    return n-1.0;
+    return 0.0;
   };
   double log_pdf (double x) const {
     size_t n = this->parameters_.size(), ind = size_t(x);
-    if (x < 0 || x >= this->parameters_.size()) return -INFINITY;
-    double norm = 0.0;
-    for (size_t i = 0; i < n; ++i) norm += exp(this->parameters_[i]->value());
-    return this->parameters_[ind]->value() - log(norm);
+    if (x < 0 || x > this->parameters_.size()) return -INFINITY;
+    if (ind == 0) {
+        double norm = this->parameters_[0]->value();
+        for (size_t i = 1; i < n; ++i) norm = logsumexp(norm, this->parameters_[i]->value());
+        if (norm >= 0.0) return -INFINITY;
+        return log(1.0 - exp(norm));
+    }
+    return this->parameters_[ind - 1]->value();
   };
 };
 

@@ -61,8 +61,8 @@ if args.poisson:
     max_log_multi = 1.0
 else:
     multi_params = np.zeros(maxn)
-    min_log_multi = -10.0
-    max_log_multi = 100.0
+    min_log_multi = -5.0
+    max_log_multi = 0.0
 
 sim = Simulator(
     stlr,
@@ -168,29 +168,17 @@ with MPIPool() as pool:
         pool.wait()
         sys.exit(0)
 
-    # from cycler import cycler
-    # from matplotlib import rcParams
-    # rcParams["font.size"] = 16
-    # rcParams["font.family"] = "sans-serif"
-    # rcParams["font.sans-serif"] = ["Computer Modern Sans"]
-    # rcParams["text.usetex"] = True
-    # rcParams["text.latex.preamble"] = r"\usepackage{cmbright}"
-    # rcParams["axes.prop_cycle"] = cycler("color", (
-    #     "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b",
-    #     "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
-    # ))  # d3.js color cycle
-
     # Run step 1 of PMC method.
-    # N = 100
-    N = 1500
+    N = 5000
     rhos, thetas, states = parse_samples(list(pool.map(
-        sample, tqdm.tqdm((None for N in range(N)), total=N))))
+        sample, tqdm.tqdm((None for _ in range(N)), total=N))))
     weights = np.ones(len(rhos)) / len(rhos)
 
     os.makedirs("results", exist_ok=True)
     stlr.to_hdf(os.path.join("results", "stlr.h5"), "stlr", format="t")
     kois.to_hdf(os.path.join("results", "kois.h5"), "kois", format="t")
     for it in range(100):
+        N = 1500
         eps, tau = update_target_density(rhos, thetas, weights)
         func = partial(pmc_sample_one, eps, tau, thetas, weights)
         rhos, thetas, states, weights = parse_samples(list(pool.map(
@@ -239,6 +227,9 @@ with MPIPool() as pool:
         axes[0, 2].hist(obs_stats[3], range=dur_range, histtype="step",
                         color="g", lw=2)
         axes[0, 3].plot(obs_stats[0], color="g", lw=2)
+        axes[0, 0].set_yscale("log")
+        axes[0, 1].set_yscale("log")
+        axes[0, 2].set_yscale("log")
         axes[0, 3].set_yscale("log")
         axes[0, 0].set_xlabel("period")
         axes[0, 1].set_xlabel("depth")
@@ -272,6 +263,8 @@ with MPIPool() as pool:
         ax.plot(inds, q[1], color="k", lw=2)
         ax.set_xlim(0, maxn)
 
+        axes[1, 0].set_yscale("log")
+        axes[1, 1].set_yscale("log")
         axes[1, 3].set_yscale("log")
         axes[1, 0].set_xlabel("period")
         axes[1, 1].set_xlabel("radius")

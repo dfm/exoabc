@@ -225,12 +225,15 @@ cdef class Simulator:
                                                   max_log_multi), lmp[0])
             multi = new Poisson(par)
         else:
-            multi0 = new Multinomial(new Parameter(0.0))
             for i, v in enumerate(log_multi_params):
-                name = "log_rate_{0}".format(i+1).encode("ascii")
+                name = "log_rate_{0}".format(i).encode("ascii")
                 par = new Parameter(name, new Uniform(min_log_multi,
                                                       max_log_multi), v)
-                multi0.add_bin(par)
+                if i:
+                    multi0.add_bin(par)
+                else:
+                    multi0 = new Multinomial(par)
+
             multi = multi0
 
         # Build the simulator

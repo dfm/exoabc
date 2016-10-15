@@ -162,10 +162,21 @@ public:
 
   double log_pdf () const {
     double log_prior = 0.0;
+
+    // The parameter priors:
     for (size_t i = 0; i < parameters_.size(); ++i)
       if (!(parameters_[i]->is_frozen()))
         log_prior += parameters_[i]->log_pdf();
     if (std::isinf(log_prior) || std::isnan(log_prior)) return -INFINITY;
+
+    // The distribution priors:
+    log_prior += period_distribution_->log_prior();
+    log_prior += radius_distribution_->log_prior();
+    log_prior += eccen_distribution_->log_prior();
+    log_prior += width_distribution_->log_prior();
+    log_prior += multi_distribution_->log_prior();
+    if (std::isinf(log_prior) || std::isnan(log_prior)) return -INFINITY;
+
     return log_prior;
   };
 
