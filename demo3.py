@@ -168,36 +168,38 @@ with MPIPool() as pool:
         pool.wait()
         sys.exit(0)
 
-    # Run step 1 of PMC method.
-    N = 5000
-    rhos, thetas, states = parse_samples(list(pool.map(
-        sample, tqdm.tqdm((None for _ in range(N)), total=N))))
-    weights = np.ones(len(rhos)) / len(rhos)
+    # # Run step 1 of PMC method.
+    # N = 5000
+    # rhos, thetas, states = parse_samples(list(pool.map(
+    #     sample, tqdm.tqdm((None for _ in range(N)), total=N))))
+    # weights = np.ones(len(rhos)) / len(rhos)
 
     os.makedirs("results", exist_ok=True)
     stlr.to_hdf(os.path.join("results", "stlr.h5"), "stlr", format="t")
     kois.to_hdf(os.path.join("results", "kois.h5"), "kois", format="t")
-    for it in range(100):
-        N = 1500
-        eps, tau = update_target_density(rhos, thetas, weights)
-        func = partial(pmc_sample_one, eps, tau, thetas, weights)
-        rhos, thetas, states, weights = parse_samples(list(pool.map(
-            func, tqdm.tqdm((None for N in range(N)), total=N))))
+    for it in range(500):
+        N = 100000
+        rhos, thetas, states = parse_samples(list(pool.map(
+            sample, tqdm.tqdm((None for _ in range(N)), total=N))))
+        weights = np.ones(len(rhos)) / len(rhos)
 
         with h5py.File(os.path.join("results", "{0:03d}.h5".format(it)),
                        "w") as f:
             f.attrs["maxn"] = maxn
             f.attrs["iteration"] = it
-            f.attrs["eps"] = eps
-            f.attrs["tau"] = tau
             for i in range(len(obs_stats)):
                 f.attrs["obs_stats_{0}".format(i)] = obs_stats[i]
             f.create_dataset("rho", data=rhos)
             f.create_dataset("theta", data=thetas)
-            f.create_dataset("weight", data=weights)
             f.create_dataset("state", data=states)
 
-        fig = corner.corner(thetas, weights=weights)
+        eps = np.percentile(rhos, 25)
+        m = rhos < eps
+        thetas = thetas[m]
+        states = states[m]
+        rhos = rhos[m]
+
+        fig = corner.corner(thetas)
         fig.savefig(os.path.join("results", "corner-{0:03d}.png".format(it)))
         plt.close(fig)
 
@@ -205,7 +207,7 @@ with MPIPool() as pool:
 
         # Observed distributions
         dur_range = (obs_stats[3].min(), obs_stats[3].max())
-        for i in np.random.choice(len(weights), p=weights, size=100):
+        for i in np.random.choice(len(thetas), size=100):
             p = thetas[i]
             sim.set_parameters(p)
             sim.state = states[i]
