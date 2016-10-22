@@ -39,6 +39,7 @@ public:
 
 class Distribution {
 public:
+  virtual double mean () const { return 0.0; };
   virtual double scale_random (double u) const {
     return 0.0;
   };
@@ -226,6 +227,15 @@ public:
   void add_bin (BaseParameter* parameter) {
     this->parameters_.push_back(parameter);
   };
+  double mean () const {
+    size_t n = this->parameters_.size();
+    double mu = 0.0, norm = this->parameters_[0]->value();
+    for (size_t i = 1; i < n; ++i) {
+        mu += i * exp(this->parameters_[i]->value());
+        norm = logsumexp(norm, this->parameters_[i]->value());
+    }
+    return mu * exp(-norm);
+  };
   double log_prior () const {
     size_t n = this->parameters_.size();
     double norm = this->parameters_[0]->value();
@@ -259,6 +269,9 @@ class Poisson : public Distribution {
 public:
   Poisson (BaseParameter* log_rate) {
     this->parameters_.push_back(log_rate);
+  };
+  double mean () const {
+    return exp(this->parameters_[0]->value());
   };
   double sample (random_state_t& state) {
     boost::random::poisson_distribution<> rng(exp(this->parameters_[0]->value()));

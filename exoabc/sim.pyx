@@ -109,6 +109,7 @@ cdef extern from "exoabc/exoabc.h" namespace "exoabc":
         double set_parameter_values (const double* params)
         double log_pdf ()
         double evaluate_multiplicity (double n)
+        double mean_multiplicity ()
 
 
 cdef class DR24CompletenessModel:
@@ -314,6 +315,9 @@ cdef class Simulator:
         for i in range(n.shape[0]):
             m[i] = self.simulation.evaluate_multiplicity(n[i])
         return m
+
+    def mean_multiplicity(self):
+        return self.simulation.mean_multiplicity()
 
     def sample_parameters(self):
         # Run the simulation

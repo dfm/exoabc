@@ -124,26 +124,12 @@ def sample(initial):
 
     pars, state = sim.get_parameters(), sim.state
     df = sim.sample_population()
+    mu = sim.mean_multiplicity()
+    zero = sim.evaluate_multiplicity(np.zeros(1))[0]
     if len(df) <= 1:
-        return np.inf, pars, state
-    return compute_distance(obs_stats, compute_stats(df)), pars, state
-
-def pmc_sample_one(eps, tau, theta0, weights, initial=None):
-    # Sample until a suitable sample is found.
-    rho = np.inf
-    while rho > eps or not np.isfinite(rho):
-        theta_star = theta0[np.random.choice(np.arange(len(weights)),
-                                             p=weights)]
-        theta_i = theta_star + tau * np.random.randn(len(theta_star))
-        p, _, state_i = sample(theta_i)
-        rho = np.sum(p)
-
-    # Re-weight the samples.
-    log_prior = sim.log_pdf()
-    norm = 0.5*((theta0 - theta_i)/tau[None, :])**2 + np.log(tau[None, :])
-    norm = np.log(weights) - np.sum(norm, axis=1)
-    log_weight = log_prior - np.logaddexp.reduce(norm)
-    return rho, theta_i, state_i, log_weight
+        return np.inf, pars, state, mu, zero
+    dist = compute_distance(obs_stats, compute_stats(df))
+    return dist, pars, state, mu, zero
 
 def parse_samples(samples):
     rho = np.array([s[0] for s in samples])
@@ -151,35 +137,21 @@ def parse_samples(samples):
     rho = rho[m]
     params = np.array([s[1] for s in samples])[m]
     states = np.array([s[2] for s in samples])[m]
-    if len(samples[0]) == 3:
-        return rho, params, states
-    log_w = np.array([s[3] for s in samples])[m]
-    return rho, params, states, np.exp(log_w - np.logaddexp.reduce(log_w))
-
-def update_target_density(rho, params, weights, percentile=30.0):
-    norm = np.sum(weights)
-    mu = np.sum(params * weights[:, None], axis=0) / norm
-    tau = np.sqrt(2 * np.sum((params-mu)**2*weights[:, None], axis=0) / norm)
-    eps = np.percentile(rho, percentile)
-    return eps, tau
+    mu = np.array([s[3] for s in samples])[m]
+    zero = np.array([s[4] for s in samples])[m]
+    return rho, params, states, mu, zero
 
 with MPIPool() as pool:
     if not pool.is_master():
         pool.wait()
         sys.exit(0)
 
-    # # Run step 1 of PMC method.
-    # N = 5000
-    # rhos, thetas, states = parse_samples(list(pool.map(
-    #     sample, tqdm.tqdm((None for _ in range(N)), total=N))))
-    # weights = np.ones(len(rhos)) / len(rhos)
-
     os.makedirs("results", exist_ok=True)
     stlr.to_hdf(os.path.join("results", "stlr.h5"), "stlr", format="t")
     kois.to_hdf(os.path.join("results", "kois.h5"), "kois", format="t")
     for it in range(500):
         N = 100000
-        rhos, thetas, states = parse_samples(list(pool.map(
+        rhos, thetas, states, mus, zeros = parse_samples(list(pool.map(
             sample, tqdm.tqdm((None for _ in range(N)), total=N))))
         weights = np.ones(len(rhos)) / len(rhos)
 
@@ -192,6 +164,8 @@ with MPIPool() as pool:
             f.create_dataset("rho", data=rhos)
             f.create_dataset("theta", data=thetas)
             f.create_dataset("state", data=states)
+            f.create_dataset("expected_number", data=mus)
+            f.create_dataset("log_rate_zero", data=zeros)
 
         eps = np.percentile(rhos, 25)
         m = rhos < eps

@@ -184,6 +184,10 @@ public:
     return this->multi_distribution_->log_pdf(n);
   };
 
+  double mean_multiplicity () const {
+    return this->multi_distribution_->mean();
+  };
+
 private:
   std::vector<BaseParameter*> parameters_;
   std::vector<const BaseStar*> stars_;
