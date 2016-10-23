@@ -39,10 +39,7 @@ if args.prefix == "q1_q17_dr24":
     prefix = "q1_q17_dr24"
     stlr = data.get_burke_gk(prefix=prefix)
     kois = data.get_candidates(stlr=stlr, prefix=prefix, mesthresh=15.0)
-    params, fig = data.calibrate_completeness(stlr, period_range=period_range,
-                                              plot=True)
-    fig.savefig("completeness.png")
-    plt.close(fig)
+    params = data.calibrate_completeness(stlr, period_range=period_range)
 elif args.prefix == "q1_q16":
     params = None
     period_range = (50, 300)
@@ -129,7 +126,8 @@ def sample(initial):
     return dist, pars, state, mu, zero
 
 def parse_samples(samples):
-    samples = [s for s in samples if s is not None]
+    samples = [s for s in samples if s is not None and
+               np.all(np.isfinite(s[0]))]
     return map(np.array, zip(*samples))
 
 with MPIPool() as pool:
