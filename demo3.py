@@ -100,46 +100,37 @@ def compute_stats(catalog):
     )
 obs_stats = compute_stats(kois)
 
-def compute_distance(ds1, ds2):
-    if args.poisson:
-        n1 = np.sum(ds1[0][1:])
-        n2 = np.sum(ds2[0][1:])
-        multi_dist = (np.log(n1)-np.log(n2))**2
-    else:
-        multi_dist = np.mean((np.log(ds1[0]+1) - np.log(ds2[0]+1))**2.0)
+def compute_distances(ds1, ds2):
+    n1 = np.sum(ds1[0][1:])
+    n2 = np.sum(ds2[0][1:])
+    multi_dist_1 = (np.log(n1)-np.log(n2))**2
+    multi_dist_2 = np.mean((np.log(ds1[0]+1) - np.log(ds2[0]+1))**2.0)
     period_dist = ks_2samp(ds1[1], ds2[1]).statistic
     depth_dist = ks_2samp(ds1[2], ds2[2]).statistic
-    # dur_dist = ks_2samp(ds1[3], ds2[3]).statistic
-    return multi_dist + period_dist + depth_dist  # + dur_dist
+    dur_dist = ks_2samp(ds1[3], ds2[3]).statistic
+    return (multi_dist_1, multi_dist_2, period_dist, depth_dist, dur_dist)
 
 def sample(initial):
-    if initial is None:
-        lp = sim.sample_parameters()
-        if not np.isfinite(lp):
-            return np.inf, sim.get_parameters(), sim.state
-    else:
-        lp = sim.set_parameters(initial)
-        if not np.isfinite(lp):
-            return np.inf, sim.get_parameters(), sim.state
+    # Sample the hyperparamters
+    lp = sim.sample_parameters()
+    if not np.isfinite(lp):
+        return None
 
-    pars, state = sim.get_parameters(), sim.state
+    # Simulate the population
     df = sim.sample_population()
+    if len(df) <= 1:
+        return None
+
+    # Build the output
+    pars, state = sim.get_parameters(), sim.state
     mu = sim.mean_multiplicity()
     zero = sim.evaluate_multiplicity(np.zeros(1))[0]
-    if len(df) <= 1:
-        return np.inf, pars, state, mu, zero
-    dist = compute_distance(obs_stats, compute_stats(df))
+    dist = compute_distances(obs_stats, compute_stats(df))
     return dist, pars, state, mu, zero
 
 def parse_samples(samples):
-    rho = np.array([s[0] for s in samples])
-    m = np.isfinite(rho)
-    rho = rho[m]
-    params = np.array([s[1] for s in samples])[m]
-    states = np.array([s[2] for s in samples])[m]
-    mu = np.array([s[3] for s in samples])[m]
-    zero = np.array([s[4] for s in samples])[m]
-    return rho, params, states, mu, zero
+    samples = [s for s in samples if s is not None]
+    return map(np.array, zip(*samples))
 
 with MPIPool() as pool:
     if not pool.is_master():
@@ -167,6 +158,7 @@ with MPIPool() as pool:
             f.create_dataset("expected_number", data=mus)
             f.create_dataset("log_rate_zero", data=zeros)
 
+        rhos = np.sum(rhos, axis=1)
         eps = np.percentile(rhos, 25)
         m = rhos < eps
         thetas = thetas[m]
