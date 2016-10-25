@@ -35,7 +35,7 @@ if args.prefix == "q1_q17_dr24":
     period_range = (10, 300)
     prad_range = (0.75, 2.5)
     depth_range = (0, 1000)
-    maxn = 8
+    maxn = 12
     prefix = "q1_q17_dr24"
     stlr = data.get_burke_gk(prefix=prefix)
     kois = data.get_candidates(stlr=stlr, prefix=prefix, mesthresh=15.0)
@@ -45,7 +45,7 @@ elif args.prefix == "q1_q16":
     period_range = (50, 300)
     prad_range = (0.75, 2.5)
     depth_range = (0, 1000)
-    maxn = 5
+    maxn = 10
     prefix = "q1_q16"
     stlr = data.get_burke_gk(prefix=prefix)
     kois = data.get_candidates(stlr=stlr, prefix=prefix)
@@ -139,7 +139,7 @@ with MPIPool() as pool:
     stlr.to_hdf(os.path.join("results", "stlr.h5"), "stlr", format="t")
     kois.to_hdf(os.path.join("results", "kois.h5"), "kois", format="t")
     for it in range(500):
-        N = 100000
+        N = 1000000
         rhos, thetas, states, mus, zeros = parse_samples(list(pool.map(
             sample, tqdm.tqdm((None for _ in range(N)), total=N))))
         weights = np.ones(len(rhos)) / len(rhos)

@@ -21,5 +21,5 @@ RUNDIR=$SCRATCH/exoabc/demo3/${PBS_JOBID/.*}
 mkdir -p $RUNDIR
 
 cd $RUNDIR
-mpiexec -np $PBS_NP python $SRCDIR/demo3.py q1_q17_dr24
+mpiexec -np $PBS_NP python $SRCDIR/demo3.py q1_q16 --poisson
 
