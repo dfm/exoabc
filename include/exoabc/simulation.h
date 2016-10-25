@@ -80,7 +80,7 @@ public:
   size_t size () {
     size_t count = 0;
     for (size_t i = 0; i < parameters_.size(); ++i)
-      if (!(parameters_[i]->is_frozen())) count++;
+      if (!(parameters_[i]->is_frozen())) count += parameters_[i]->dimension();
     return count;
   };
 
@@ -98,18 +98,18 @@ public:
       double stlr_radius = star->sample_radius(state);
 
       // Sample a number of planets
-      size_t N = size_t(multi_distribution_->sample(state));
+      size_t N = size_t(multi_distribution_->sample_1d(state));
 
       // Sample the mean inclination and the inclination width
       double mean_incl = M_PI * (2.0 * uniform_rng_(state) - 1.0),
-             incl_width = width_distribution_->sample(state);
+             incl_width = width_distribution_->sample_1d(state);
 
       // Loop over the planets
       for (size_t n = 0; n < N; ++n) {
         // Base parameters
-        double radius = radius_distribution_->sample(state),
-               period = period_distribution_->sample(state),
-               eccen  = eccen_distribution_->sample(state),
+        double radius = radius_distribution_->sample_1d(state),
+               period = period_distribution_->sample_1d(state),
+               eccen  = eccen_distribution_->sample_1d(state),
                omega  = 2.0 * M_PI * uniform_rng_(state),
                q1     = uniform_rng_(state),
                q2     = uniform_rng_(state);
@@ -134,16 +134,25 @@ public:
   };
 
   std::vector<double> get_parameter_values () const {
-    std::vector<double> params;
+    std::vector<double> params, tmp;
     for (size_t i = 0; i < parameters_.size(); ++i)
-      if (!(parameters_[i]->is_frozen())) params.push_back(parameters_[i]->value());
+      if (!(parameters_[i]->is_frozen())) {
+        tmp = parameters_[i]->value();
+        for (size_t j = 0; j < parameters_[i]->dimension(); ++j)
+          params.push_back(tmp[j]);
+      }
     return params;
   };
 
   void get_parameter_values (double* params) const {
     size_t j = 0;
+    std::vector<double> tmp;
     for (size_t i = 0; i < parameters_.size(); ++i)
-      if (!(parameters_[i]->is_frozen())) params[j++] = parameters_[i]->value();
+      if (!(parameters_[i]->is_frozen())) {
+        tmp = parameters_[i]->value();
+        for (size_t k = 0; k < parameters_[i]->dimension(); ++k)
+          params[j++] = tmp[k];
+      }
   };
 
   double set_parameter_values (const std::vector<double>& vector) {
@@ -153,9 +162,13 @@ public:
   double set_parameter_values (const double* vector) {
     size_t j = 0;
     double log_prior = 0.0;
+    std::vector<double> v;
     for (size_t i = 0; i < parameters_.size(); ++i)
-      if (!(parameters_[i]->is_frozen()))
-        log_prior += parameters_[i]->value(vector[j++]);
+      if (!(parameters_[i]->is_frozen())) {
+        v.resize(parameters_[i]->dimension());
+        for (size_t k = 0; k < v.size(); ++k) v[k] = vector[j++];
+        log_prior += parameters_[i]->value(v);
+      }
     if (std::isinf(log_prior) || std::isnan(log_prior)) return -INFINITY;
     return log_prior;
   };
@@ -181,11 +194,11 @@ public:
   };
 
   double evaluate_multiplicity (double n) const {
-    return this->multi_distribution_->log_pdf(n);
+    return this->multi_distribution_->log_pdf_1d(n);
   };
 
   double mean_multiplicity () const {
-    return this->multi_distribution_->mean();
+    return this->multi_distribution_->mean_1d();
   };
 
 private:

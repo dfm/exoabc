@@ -7,8 +7,6 @@ import os
 import sys
 import time
 import argparse
-from math import factorial
-from functools import partial
 from collections import Counter
 
 import h5py
@@ -139,7 +137,7 @@ with MPIPool() as pool:
     stlr.to_hdf(os.path.join("results", "stlr.h5"), "stlr", format="t")
     kois.to_hdf(os.path.join("results", "kois.h5"), "kois", format="t")
     for it in range(500):
-        N = 100000
+        N = 500
         rhos, thetas, states, mus, zeros = parse_samples(list(pool.map(
             sample, tqdm.tqdm((None for _ in range(N)), total=N))))
         weights = np.ones(len(rhos)) / len(rhos)
