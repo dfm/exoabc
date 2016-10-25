@@ -50,6 +50,7 @@ cdef extern from "exoabc/exoabc.h" namespace "exoabc":
         Parameter(string, Distribution*)
         Parameter(string, Distribution*, random_state_t)
         Parameter(string, Distribution*, double)
+        Parameter(string, Distribution*, vector[double])
     cdef cppclass PowerLaw(Distribution):
         PowerLaw(double, double, BaseParameter*)
     cdef cppclass Normal(Distribution):
@@ -60,9 +61,10 @@ cdef extern from "exoabc/exoabc.h" namespace "exoabc":
         Rayleigh(BaseParameter*)
     cdef cppclass Multinomial(Distribution):
         Multinomial(BaseParameter*)
-        void add_bin(Parameter*)
     cdef cppclass Poisson(Distribution):
         Poisson(BaseParameter*)
+    cdef cppclass Dirichlet(Distribution):
+        Dirichlet(size_t n)
 
     # Observation model
     cdef cppclass CompletenessModel:
@@ -216,26 +218,31 @@ cdef class Simulator:
         # Multiplicity
         cdef np.ndarray[DTYPE_t, ndim=1] lmp = np.atleast_1d(log_multi_params)
         cdef Distribution* multi
-        cdef Multinomial* multi0
         cdef Parameter* par
         cdef int i
         cdef double v
+        cdef vector[double] vec
 
         if poisson:
             par = new Parameter(name, new Uniform(min_log_multi,
                                                   max_log_multi), lmp[0])
             multi = new Poisson(par)
         else:
-            for i, v in enumerate(log_multi_params):
-                name = "log_rate_{0}".format(i).encode("ascii")
-                par = new Parameter(name, new Uniform(min_log_multi,
-                                                      max_log_multi), v)
-                if i:
-                    multi0.add_bin(par)
-                else:
-                    multi0 = new Multinomial(par)
+            vec.resize(len(lmp))
+            for i in range(len(lmp)):
+                vec[i] = lmp[i]
+            par = new Parameter(name, new Dirichlet(len(lmp)), vec)
+            multi = new Multinomial(par)
+            # for i, v in enumerate(log_multi_params):
+            #     name = "log_rate_{0}".format(i).encode("ascii")
+            #     par = new Parameter(name, new Uniform(min_log_multi,
+            #                                           max_log_multi), v)
+            #     if i:
+            #         multi0.add_bin(par)
+            #     else:
+            #         multi0 = new Multinomial(par)
 
-            multi = multi0
+            # multi = multi0
 
         # Build the simulator
         self.simulation = new Simulation(period, radius, eccen, width, multi)

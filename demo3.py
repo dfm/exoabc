@@ -7,8 +7,6 @@ import os
 import sys
 import time
 import argparse
-from math import factorial
-from functools import partial
 from collections import Counter
 
 import h5py
