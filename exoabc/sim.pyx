@@ -53,6 +53,8 @@ cdef extern from "exoabc/exoabc.h" namespace "exoabc":
         Parameter(string, Distribution*, vector[double])
     cdef cppclass PowerLaw(Distribution):
         PowerLaw(double, double, BaseParameter*)
+    cdef cppclass BrokenPowerLaw(Distribution):
+        BrokenPowerLaw(double, double, BaseParameter*, BaseParameter*, BaseParameter*)
     cdef cppclass Normal(Distribution):
         Normal(BaseParameter*, BaseParameter*)
     cdef cppclass Beta(Distribution):
@@ -164,7 +166,7 @@ cdef class Simulator:
                   double min_radius_slope=-4.0, double max_radius_slope=3.0,
                   double min_log_sigma=-5.0, double max_log_sigma=1.0,
                   double min_log_multi=-8.0, double max_log_multi=8.0,
-                  poisson=False,
+                  poisson=False, broken_radius=False,
                   eccen_params=(0.867, 3.03),
                   seed=None, release=None, completeness_params=None):
         # Set up the random state
@@ -200,13 +202,30 @@ cdef class Simulator:
                           new Uniform(min_period_slope, max_period_slope),
                           period_slope)
         )
-        name = b"radius_slope"
-        cdef PowerLaw* radius = new PowerLaw(
-            min_radius, max_radius,
-            new Parameter(name,
-                          new Uniform(min_radius_slope, max_radius_slope),
-                          radius_slope)
-        )
+        cdef Distribution* radius
+        if broken_radius:
+            name = b"radius"
+            radius = new BrokenPowerLaw(
+                min_radius, max_radius,
+                new Parameter(name,
+                              new Uniform(min_radius, max_radius),
+                              0.5 * (min_radius + max_radius)),
+                new Parameter(name,
+                              new Uniform(min_radius_slope, max_radius_slope),
+                              radius_slope),
+                new Parameter(name,
+                              new Uniform(min_radius_slope, max_radius_slope),
+                              radius_slope),
+            )
+        else:
+            name = b"radius_slope"
+            radius = new PowerLaw(
+                min_radius, max_radius,
+                new Parameter(name,
+                              new Uniform(min_radius_slope, max_radius_slope),
+                              radius_slope)
+            )
+
         cdef Beta* eccen = new Beta(new Parameter(log(eccen_params[0])),
                                     new Parameter(log(eccen_params[1])))
         name = b"log_width"
@@ -233,16 +252,6 @@ cdef class Simulator:
                 vec[i] = lmp[i]
             par = new Parameter(name, new Dirichlet(len(lmp)), vec)
             multi = new Multinomial(par)
-            # for i, v in enumerate(log_multi_params):
-            #     name = "log_rate_{0}".format(i).encode("ascii")
-            #     par = new Parameter(name, new Uniform(min_log_multi,
-            #                                           max_log_multi), v)
-            #     if i:
-            #         multi0.add_bin(par)
-            #     else:
-            #         multi0 = new Multinomial(par)
-
-            # multi = multi0
 
         # Build the simulator
         self.simulation = new Simulation(period, radius, eccen, width, multi)

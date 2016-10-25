@@ -26,14 +26,17 @@ parser = argparse.ArgumentParser(
     description="collect some search and injection/recovery results"
 )
 parser.add_argument("prefix", choices=["q1_q16", "q1_q17_dr24"])
+parser.add_argument("--num-per", type=int, default=1000000)
+parser.add_argument("--maxn", type=int, default=8)
 parser.add_argument("--poisson", action="store_true")
+parser.add_argument("--broken", action="store_true")
 args = parser.parse_args()
 
 if args.prefix == "q1_q17_dr24":
     period_range = (10, 300)
     prad_range = (0.75, 2.5)
     depth_range = (0, 1000)
-    maxn = 12
+    maxn = args.maxn
     prefix = "q1_q17_dr24"
     stlr = data.get_burke_gk(prefix=prefix)
     kois = data.get_candidates(stlr=stlr, prefix=prefix, mesthresh=15.0)
@@ -43,7 +46,7 @@ elif args.prefix == "q1_q16":
     period_range = (50, 300)
     prad_range = (0.75, 2.5)
     depth_range = (0, 1000)
-    maxn = 10
+    maxn = args.maxn
     prefix = "q1_q16"
     stlr = data.get_burke_gk(prefix=prefix)
     kois = data.get_candidates(stlr=stlr, prefix=prefix)
@@ -69,7 +72,7 @@ sim = Simulator(
     min_log_sigma=-5.0, max_log_sigma=np.log(np.radians(90)),
     min_log_multi=min_log_multi, max_log_multi=max_log_multi,
     release=prefix, completeness_params=params,
-    poisson=args.poisson,
+    poisson=args.poisson, broken_radius=args.broken,
     seed=int(os.getpid() + 1000*time.time()) % 20000,
 )
 
@@ -137,7 +140,7 @@ with MPIPool() as pool:
     stlr.to_hdf(os.path.join("results", "stlr.h5"), "stlr", format="t")
     kois.to_hdf(os.path.join("results", "kois.h5"), "kois", format="t")
     for it in range(500):
-        N = 1000000
+        N = args.num_per
         rhos, thetas, states, mus, zeros = parse_samples(list(pool.map(
             sample, tqdm.tqdm((None for _ in range(N)), total=N))))
         weights = np.ones(len(rhos)) / len(rhos)

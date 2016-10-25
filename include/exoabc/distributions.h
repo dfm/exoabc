@@ -203,6 +203,89 @@ private:
   double mn_, mx_;
 };
 
+class BrokenPowerLaw : public Distribution {
+public:
+  BrokenPowerLaw (double mn, double mx, BaseParameter* x0, BaseParameter* n1,
+                  BaseParameter* n2) : mn_(mn), mx_(mx)
+  {
+    this->parameters_.push_back(x0);
+    this->parameters_.push_back(n1);
+    this->parameters_.push_back(n2);
+  };
+
+  double scale_random (double u) const {
+    double x0 = this->parameters_[0]->value_1d(),
+           a1 = this->parameters_[1]->value_1d(),
+           a2 = this->parameters_[2]->value_1d(),
+           a11 = a1 + 1.0,
+           a21 = a2 + 1.0,
+           x0da = pow(x0, a2-a1),
+           fmin1, fmin2,
+           N1, N2, N;
+
+    if (fabs(a11) < DBL_EPSILON) {
+      fmin1 = log(mn_);
+      N1 = x0da*(log(x0)-fmin1);
+    } else {
+      fmin1 = pow(mn_, a11);
+      N1 = x0da*(pow(x0, a11)-fmin1)/a11;
+    }
+    if (fabs(a21) < DBL_EPSILON) {
+      fmin2 = log(x0);
+      N2 = log(mx_)-fmin2;
+    } else {
+      fmin2 = pow(x0, a21);
+      N2 = (pow(mx_, a21)-fmin2)/a21;
+    }
+    N = N1 + N2;
+
+    // Low x
+    if (u <= N1 / N) {
+      if (fabs(a11) < DBL_EPSILON) return mn_*exp(u*N/x0da);
+      return pow(a11*u*N/x0da + fmin1, 1.0/a11);
+    }
+
+    // High x
+    u -= N1 / N;
+    if (fabs(a21) < DBL_EPSILON) return mn_*exp(u*N);
+    return pow(a21*u*N + fmin2, 1.0/a21);
+  };
+
+  double log_pdf_1d (double x) const {
+    if (x < mn_ || x > mx_) return -INFINITY;
+    double x0 = this->parameters_[0]->value_1d(),
+           a1 = this->parameters_[1]->value_1d(),
+           a2 = this->parameters_[2]->value_1d(),
+           a11 = a1 + 1.0,
+           a21 = a2 + 1.0,
+           x0da = pow(x0, a2-a1),
+           fmin1, fmin2,
+           N1, N2, N;
+
+    if (fabs(a11) < DBL_EPSILON) {
+      fmin1 = log(mn_);
+      N1 = x0da*(log(x0)-fmin1);
+    } else {
+      fmin1 = pow(mn_, a11);
+      N1 = x0da*(pow(x0, a11)-fmin1)/a11;
+    }
+    if (fabs(a21) < DBL_EPSILON) {
+      fmin2 = log(x0);
+      N2 = log(mx_)-fmin2;
+    } else {
+      fmin2 = pow(x0, a21);
+      N2 = (pow(mx_, a21)-fmin2)/a21;
+    }
+    N = N1 + N2;
+
+    if (x < x0) return a1 * log(x) + log(x0da) - log(N);
+    return a2 * log(x) - log(N);
+  };
+
+private:
+  double mn_, mx_;
+};
+
 class Normal : public Distribution {
 public:
   Normal (BaseParameter* mu, BaseParameter* log_sig) {
@@ -293,7 +376,7 @@ public:
     std::vector<double> vec = par->value();
     size_t n = par->dimension(), ind = size_t(x);
     if (x < 0 || x >= n) return -INFINITY;
-    return vec[ind];
+    return log(vec[ind]);
   };
 };
 
