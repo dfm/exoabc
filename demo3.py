@@ -55,7 +55,7 @@ if args.poisson:
     min_log_multi = -10.0
     max_log_multi = 1.0
 else:
-    multi_params = np.zeros(maxn)
+    multi_params = np.ones(maxn + 1) / (maxn + 1.0)
     min_log_multi = -5.0
     max_log_multi = 0.0
 
