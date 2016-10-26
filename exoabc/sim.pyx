@@ -75,9 +75,10 @@ cdef extern from "exoabc/exoabc.h" namespace "exoabc":
         pass
     cdef cppclass Q1_Q17_CompletenessModel(CompletenessModel):
         Q1_Q17_CompletenessModel (
-            double qmax_a, double qmax_m, double qmax_b,
-            double mes0_a, double mes0_m, double mes0_b,
-            double lnw_a, double lnw_m, double lnw_b
+            vector[double] period_bin_edges,
+            vector[double] qmax,
+            vector[double] mes0,
+            vector[double] lnw
         )
         double get_pdet (double period, double mes, double mest)
     cdef cppclass Star:
@@ -120,6 +121,7 @@ cdef class DR24CompletenessModel:
 
     def get_pdet(self,
                  np.ndarray[DTYPE_t, ndim=1, mode='c'] params,
+                 np.ndarray[DTYPE_t, ndim=1, mode='c'] period_bin_edges,
                  np.ndarray[DTYPE_t, ndim=1, mode='c'] period,
                  np.ndarray[DTYPE_t, ndim=1, mode='c'] mes):
         # Check the shapes.
@@ -127,18 +129,30 @@ cdef class DR24CompletenessModel:
         if n != mes.shape[0]:
             raise ValueError("dimension mismatch (period/mes)")
 
+        cdef int bin_edges = len(period_bin_edges)
+        cdef int bins = bin_edges - 1
+
         # Build the completeness model.
-        if params.shape[0] != 9:
+        if params.shape[0] != bins * 3:
             raise ValueError("dimension mismatch (params)")
+
+        cdef int i
+        cdef vector[double] period_bin_edges_v = vector[double](bin_edges)
+        cdef vector[double] qmax = vector[double](bins)
+        cdef vector[double] mes0 = vector[double](bins)
+        cdef vector[double] lnw = vector[double](bins)
+        for i in range(bins):
+            period_bin_edges_v[i] = period_bin_edges[i]
+            qmax[i] = params[3*i]
+            mes0[i] = params[3*i+1]
+            lnw[i] = params[3*i+2]
+        period_bin_edges_v[bins] = period_bin_edges[bins]
 
         # Build the completeness model
         cdef Q1_Q17_CompletenessModel* model = new Q1_Q17_CompletenessModel(
-            params[0], params[1], params[2],
-            params[3], params[4], params[5],
-            params[6], params[7], params[8],
+            period_bin_edges_v, qmax, mes0, lnw
         )
 
-        cdef int i
         cdef np.ndarray[DTYPE_t, ndim=1, mode='c'] output = np.empty(n, dtype=DTYPE)
         for i in range(n):
             output[i] = model.get_pdet(period[i], mes[i], 0.0)
@@ -158,6 +172,44 @@ cdef class Simulator:
     cdef Simulation*        simulation
     cdef CompletenessModel* completeness_model
 
+    @classmethod
+    def from_config_args(cls, stars, seed=None, release=None,
+                         completeness_params=None, **kwargs):
+        min_period, max_period = kwargs.pop("period")
+        min_period_slope, max_period_slope = kwargs.pop("period_slope")
+        period_slope = np.random.uniform(min_period_slope, max_period_slope)
+
+        min_radius, max_radius = kwargs.pop("radius")
+        min_radius_slope, max_radius_slope = kwargs.pop("radius_slope")
+        radius_slope = np.random.uniform(min_period_slope, max_period_slope)
+
+        min_log_sigma, max_log_sigma = kwargs.pop("log_sigma")
+        log_sigma = np.random.uniform(min_log_sigma, max_log_sigma)
+
+        if kwargs["poisson"]:
+            kwargs.pop("maxn")
+            min_log_multi, max_log_multi = kwargs.pop("log_mu")
+            log_multi_params = np.random.uniform(min_log_multi, max_log_multi)
+        else:
+            kwargs.pop("log_mu")
+            min_log_multi, max_log_multi = 0.0, 0.0
+            maxn = kwargs.pop("maxn")
+            log_multi_params = -np.log(maxn) + np.zeros(maxn+1)
+
+        return cls(
+            stars,
+            min_period, max_period, period_slope,
+            min_radius, max_radius, radius_slope,
+            log_sigma, log_multi_params,
+            min_period_slope, max_period_slope,
+            min_radius_slope, max_radius_slope,
+            min_log_sigma, max_log_sigma,
+            min_log_multi, max_log_multi,
+            seed=seed, release=release,
+            completeness_params=completeness_params,
+            **kwargs
+        )
+
     def __cinit__(self, stars,
                   double min_period, double max_period, double period_slope,
                   double min_radius, double max_radius, double radius_slope,
@@ -168,7 +220,9 @@ cdef class Simulator:
                   double min_log_multi=-8.0, double max_log_multi=8.0,
                   poisson=False, broken_radius=False,
                   eccen_params=(0.867, 3.03),
-                  seed=None, release=None, completeness_params=None):
+                  seed=None, release=None,
+                  completeness_params=None,
+                  period_bin_edges=None):
         # Set up the random state
         cdef unsigned iseed
         if seed is None:
@@ -177,19 +231,36 @@ cdef class Simulator:
             iseed = int(seed)
         self.state = random_state_t(iseed)
 
+        cdef int i, bin_edges, bins
+        cdef vector[double] period_bin_edges_v, qmax,  mes0, lnw
+
         # Figure out which completeness model to use
         if release is None:
             release = "q1_q16"
         if release == "q1_q16":
             self.completeness_model = new Q1_Q16_CompletenessModel()
         elif release == "q1_q17_dr24":
-            completeness_params = np.atleast_1d(completeness_params)
-            if not completeness_params.shape == (9, ):
+            bin_edges = len(period_bin_edges)
+            bins = bin_edges - 1
+
+            # Build the completeness model.
+            if completeness_params.shape[0] != bins * 3:
                 raise ValueError("completeness parameters dimension mismatch")
+
+            period_bin_edges_v = vector[double](bin_edges)
+            qmax = vector[double](bins)
+            mes0 = vector[double](bins)
+            lnw = vector[double](bins)
+            for i in range(bins):
+                period_bin_edges_v[i] = period_bin_edges[i]
+                qmax[i] = completeness_params[3*i]
+                mes0[i] = completeness_params[3*i+1]
+                lnw[i] = completeness_params[3*i+2]
+            period_bin_edges_v[bins] = period_bin_edges[bins]
+
+            # Build the completeness model
             self.completeness_model = new Q1_Q17_CompletenessModel(
-                completeness_params[0], completeness_params[1], completeness_params[2],
-                completeness_params[3], completeness_params[4], completeness_params[5],
-                completeness_params[6], completeness_params[7], completeness_params[8],
+                period_bin_edges_v, qmax, mes0, lnw
             )
         else:
             raise ValueError("unrecognized release: '{0}'".format(release))
@@ -238,7 +309,6 @@ cdef class Simulator:
         cdef np.ndarray[DTYPE_t, ndim=1] lmp = np.atleast_1d(log_multi_params)
         cdef Distribution* multi
         cdef Parameter* par
-        cdef int i
         cdef double v
         cdef vector[double] vec
 
@@ -249,7 +319,7 @@ cdef class Simulator:
         else:
             vec.resize(len(lmp))
             for i in range(len(lmp)):
-                vec[i] = lmp[i]
+                vec[i] = np.exp(lmp[i])
             par = new Parameter(name, new Dirichlet(len(lmp)), vec)
             multi = new Multinomial(par)
 

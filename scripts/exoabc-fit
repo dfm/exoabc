@@ -5,7 +5,7 @@ from __future__ import division, print_function
 
 import os
 import time
-import json
+import pickle
 import argparse
 from collections import Counter
 
@@ -15,60 +15,58 @@ from scipy.stats import ks_2samp
 
 import tqdm
 
-from exoabc import Simulator, data
+from exoabc import Simulator, data, config, completeness
 
 parser = argparse.ArgumentParser()
-parser.add_argument("prefix", choices=["q1_q16", "q1_q17_dr24"])
 parser.add_argument("runid")
-parser.add_argument("--num-per", type=int, default=1000)
-parser.add_argument("--maxn", type=int, default=8)
-parser.add_argument("--poisson", action="store_true")
-parser.add_argument("--broken", action="store_true")
+parser.add_argument("--config")
+parser.add_argument("--save-plot")
+parser.add_argument("-v", "--verbose", action="store_true")
 args = parser.parse_args()
 
-if args.prefix == "q1_q17_dr24":
-    period_range = (10, 300)
-    prad_range = (0.75, 2.5)
-    depth_range = (0, 1000)
-    maxn = args.maxn
-    prefix = "q1_q17_dr24"
-    stlr = data.get_burke_gk(prefix=prefix)
-    kois = data.get_candidates(stlr=stlr, prefix=prefix, mesthresh=15.0)
-    params = data.calibrate_completeness(stlr, period_range=period_range)
-elif args.prefix == "q1_q16":
-    params = None
-    period_range = (50, 300)
-    prad_range = (0.75, 2.5)
-    depth_range = (0, 1000)
-    maxn = args.maxn
-    prefix = "q1_q16"
-    stlr = data.get_burke_gk(prefix=prefix)
-    kois = data.get_candidates(stlr=stlr, prefix=prefix)
-else:
-    assert False, "Invalid prefix"
+# Read the config file.
+c = config.parse_config(filename=args.config, save_to=args.config+".out")
+prefix = c["data release"]["prefix"]
+if prefix not in ["q1_q16", "q1_q17_dr24"]:
+    raise ValueError("invalid prefix: {0}".format(prefix))
 
-if args.poisson:
-    multi_params = 0.0
-    min_log_multi = -10.0
-    max_log_multi = 1.0
-else:
-    multi_params = np.ones(maxn + 1) / (maxn + 1.0)
-    min_log_multi = -5.0
-    max_log_multi = 0.0
+# Load the sample.
+stlr = data.get_sample("stellar", prefix=prefix, **(c["stars"]))
+kois = data.get_sample("koi", prefix=prefix, join=stlr, **(c["candidates"]))
 
-sim = Simulator(
-    stlr,
-    period_range[0], period_range[1], 0.0,
-    prad_range[0], prad_range[1], -2.0,
-    -3.0, multi_params,
-    min_period_slope=-5.0, max_period_slope=3.0,
-    min_radius_slope=-5.0, max_radius_slope=3.0,
-    min_log_sigma=-5.0, max_log_sigma=np.log(np.radians(90)),
-    min_log_multi=min_log_multi, max_log_multi=max_log_multi,
-    release=prefix, completeness_params=params,
-    poisson=args.poisson, broken_radius=args.broken,
-    seed=int(os.getpid() + 1000*time.time()) % 20000,
+# Summarize the sample.
+summary = "prefix = {0}\nlen(stlr) = {1}\nlen(kois) = {2}\n".format(
+    prefix, len(stlr), len(kois)
 )
+with open("sample-summary.txt", "w") as f:
+    f.write(summary)
+if args.verbose:
+    print(summary)
+
+# Calibrate the completeness.
+if prefix == "q1_q17_dr24":
+    period_bins, params = completeness.calibrate_dr24_completness(
+        stlr, plot=args.save_plot, **(c["data release"]))
+    with open("completeness-params.pkl", "wb") as f:
+        pickle.dump((period_bins, params), f, -1)
+else:
+    period_bins = None
+    params = None
+
+sim = Simulator.from_config_args(
+    stlr,
+    completeness_params=params,
+    period_bin_edges=period_bins,
+    release=prefix,
+    seed=int(os.getpid() + 1000*time.time()) % 20000,
+    **(c["simulator"])
+)
+
+# Some global parameters
+maxn = c["simulator"]["maxn"]
+period_range = c["stats"]["period"]
+prad_range = c["stats"]["radius"]
+depth_range = c["stats"]["depth"]
 
 def compute_stats(catalog):
     m = (period_range[0] <= catalog.koi_period)
@@ -127,13 +125,13 @@ def parse_samples(samples):
 
 fn = "{0}.h5".format(args.runid)
 with h5py.File(fn, "w") as f:
-    f.attrs["maxn"] = maxn
+    f.attrs["maxn"] = c["simulator"]["maxn"]
     for i in range(len(obs_stats)):
         f.attrs["obs_stats_{0}".format(i)] = obs_stats[i]
 
 
-for it in range(500):
-    N = args.num_per
+for it in range(c["sampling"]["number_of_batches"]):
+    N = c["sampling"]["batch_size"]
     rhos, thetas, states, mus, zeros = parse_samples(map(
         sample, tqdm.tqdm((None for _ in range(N)), total=N)))
     weights = np.ones(len(rhos)) / len(rhos)

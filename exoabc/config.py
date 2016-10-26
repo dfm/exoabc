@@ -50,7 +50,7 @@ def parse_element(element):
 
     # Constants
     if element.lower() in ["true", "false"]:
-        return bool(element)
+        return element.lower() == "true"
     if element.lower() == "finite":
         return "finite"
 

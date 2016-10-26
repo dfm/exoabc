@@ -71,27 +71,31 @@ private:
 class Q1_Q17_CompletenessModel : public CompletenessModel {
 public:
   Q1_Q17_CompletenessModel (
-    double qmax_a, double qmax_m, double qmax_b,
-    double mes0_a, double mes0_m, double mes0_b,
-    double lnw_a, double lnw_m, double lnw_b
+    std::vector<double> period_bin_edges,
+    std::vector<double> qmax, std::vector<double> mes0, std::vector<double> lnw
   )
-  : qmax_a_(qmax_a), qmax_m_(qmax_m), qmax_b_(qmax_b),
-    mes0_a_(mes0_a), mes0_m_(mes0_m), mes0_b_(mes0_b),
-    lnw_a_(lnw_a), lnw_m_(lnw_m), lnw_b_(lnw_b) {};
+  : period_bin_edges_(period_bin_edges), qmax_(qmax), mes0_(mes0), invw_(lnw)
+  {
+    for (size_t i = 0; i < invw_.size(); ++i) invw_[i] = exp(-invw_[i]);
+  };
 
   double get_pdet (double period, double mes, double mest) const {
-    double x = log(period), x2 = x*x,
-           qmax = qmax_a_ * x2 + qmax_m_ * x + qmax_b_,
-           mes0 = mes0_a_ * x2 + mes0_m_ * x + mes0_b_,
-           invw = exp(-lnw_a_ * x2 - lnw_m_ * x - lnw_b_);
-    double y = qmax / (1.0 + exp(-(mes - mes0) * invw));
-    if (y < 0.0) return 0.0;
-    if (y > 1.0) return 1.0;
+    if (period < period_bin_edges_[0]) return 0.0;
+    if (period > period_bin_edges_[period_bin_edges_.size()-1]) return 0.0;
+
+    size_t i;
+    for (i = 1; i < period_bin_edges_.size(); ++i) if (period < period_bin_edges_[i]) break;
+    if (i >= period_bin_edges_.size()) return 0.0;
+
+    double qmax = qmax_[i-1], mes0 = mes0_[i-1], invw = invw_[i-1],
+           y = qmax / (1.0 + exp(-(mes - mes0) * invw));
+    if (y <= 0.0) return 0.0;
+    if (y >= 1.0) return 1.0;
     return y;
   };
 
 private:
-  double qmax_a_, qmax_m_, qmax_b_, mes0_a_, mes0_m_, mes0_b_, lnw_a_, lnw_m_, lnw_b_;
+  std::vector<double> period_bin_edges_, qmax_, mes0_, invw_;
 };
 
 
