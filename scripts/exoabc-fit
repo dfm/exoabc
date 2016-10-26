@@ -4,6 +4,7 @@
 from __future__ import division, print_function
 
 import os
+import json
 import time
 import pickle
 import argparse
@@ -47,8 +48,6 @@ if args.verbose:
 if prefix == "q1_q17_dr24":
     period_bins, params = completeness.calibrate_dr24_completness(
         stlr, plot=args.save_plot, **(c["data release"]))
-    with open("completeness-params.pkl", "wb") as f:
-        pickle.dump((period_bins, params), f, -1)
 else:
     period_bins = None
     params = None
@@ -125,6 +124,9 @@ def parse_samples(samples):
 
 fn = "{0}.h5".format(args.runid)
 with h5py.File(fn, "w") as f:
+    f.attrs["period_bins"] = period_bins
+    f.attrs["completeness_params"] = params
+    f.attrs["config"] = np.void(json.dumps(c).encode("utf-8"))
     f.attrs["maxn"] = c["simulator"]["maxn"]
     for i in range(len(obs_stats)):
         f.attrs["obs_stats_{0}".format(i)] = obs_stats[i]
