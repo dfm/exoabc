@@ -201,6 +201,15 @@ public:
     return this->multi_distribution_->mean_1d();
   };
 
+  double evaluate_period_distribution (double period) const {
+    return this->period_distribution_->log_pdf_1d(period);
+  };
+
+  double evaluate_radius_distribution (double radius) const {
+    return this->radius_distribution_->log_pdf_1d(radius);
+  };
+
+
 private:
   std::vector<BaseParameter*> parameters_;
   std::vector<const BaseStar*> stars_;

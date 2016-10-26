@@ -114,6 +114,8 @@ cdef extern from "exoabc/exoabc.h" namespace "exoabc":
         double set_parameter_values (const double* params)
         double log_pdf ()
         double evaluate_multiplicity (double n)
+        double evaluate_period_distribution (double period)
+        double evaluate_radius_distribution (double radius)
         double mean_multiplicity ()
 
 
@@ -404,6 +406,20 @@ cdef class Simulator:
 
     def mean_multiplicity(self):
         return self.simulation.mean_multiplicity()
+
+    def evaluate_period_distribution(self, np.ndarray[DTYPE_t, ndim=1] x):
+        cdef int i
+        cdef np.ndarray[DTYPE_t, ndim=1] d = np.empty(x.shape[0])
+        for i in range(x.shape[0]):
+            d[i] = self.simulation.evaluate_period_distribution(x[i])
+        return d
+
+    def evaluate_radius_distribution(self, np.ndarray[DTYPE_t, ndim=1] x):
+        cdef int i
+        cdef np.ndarray[DTYPE_t, ndim=1] d = np.empty(x.shape[0])
+        for i in range(x.shape[0]):
+            d[i] = self.simulation.evaluate_radius_distribution(x[i])
+        return d
 
     def sample_parameters(self):
         # Run the simulation
