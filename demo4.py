@@ -19,7 +19,7 @@ from exoabc import Simulator, data
 parser = argparse.ArgumentParser()
 parser.add_argument("prefix", choices=["q1_q16", "q1_q17_dr24"])
 parser.add_argument("runid")
-parser.add_argument("--num-per", type=int, default=1000000)
+parser.add_argument("--num-per", type=int, default=1000)
 parser.add_argument("--maxn", type=int, default=8)
 parser.add_argument("--poisson", action="store_true")
 parser.add_argument("--broken", action="store_true")
