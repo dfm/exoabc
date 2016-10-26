@@ -18,5 +18,5 @@ export RUNDIR=$PBS_O_WORKDIR
 mkdir -p $RUNDIR
 
 cd $RUNDIR
-mpiexec -np $PBS_NP python $SRCDIR/demo4.py q1_q17_dr24 ${PBS_ARRAYID} --maxn 10 --broken
+python $SRCDIR/scripts/exoabc-fit ${PBS_ARRAYID} --config config.ini --verbose
 
