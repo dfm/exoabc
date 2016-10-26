@@ -6,7 +6,6 @@ from __future__ import division, print_function
 import os
 import json
 import time
-import pickle
 import argparse
 from collections import Counter
 
@@ -26,7 +25,7 @@ parser.add_argument("-v", "--verbose", action="store_true")
 args = parser.parse_args()
 
 # Read the config file.
-c = config.parse_config(filename=args.config, save_to=args.config+".out")
+c = config.parse_config(filename=args.config)
 prefix = c["data release"]["prefix"]
 if prefix not in ["q1_q16", "q1_q17_dr24"]:
     raise ValueError("invalid prefix: {0}".format(prefix))
@@ -39,8 +38,6 @@ kois = data.get_sample("koi", prefix=prefix, join=stlr, **(c["candidates"]))
 summary = "prefix = {0}\nlen(stlr) = {1}\nlen(kois) = {2}\n".format(
     prefix, len(stlr), len(kois)
 )
-with open("sample-summary.txt", "w") as f:
-    f.write(summary)
 if args.verbose:
     print(summary)
 
